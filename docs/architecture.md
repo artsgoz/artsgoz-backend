@@ -2,6 +2,8 @@
 
 A Go (Fiber + pgx) backend organized using **Domain-Driven Design (DDD)** + **Clean Architecture**. This document explains the *why*, the *what*, and the *how* — so a new contributor can land their first PR confidently.
 
+> **New to DDD or Clean Architecture?** Read [**`ddd-walkthrough.md`**](./ddd-walkthrough.md) first — it builds a complete new module (`artwork`) from scratch, step by step, with every file annotated. Come back here for reference once you've gone through it.
+
 ---
 
 ## Table of contents
@@ -503,6 +505,8 @@ curl -X POST localhost:3000/api/v1/users/login -d '{"email":"a@b.com","password"
 ```
 
 ---
+
+> **Looking for a full hand-held example?** [`ddd-walkthrough.md`](./ddd-walkthrough.md) builds a complete new module (`artwork`) from scratch, including how to identify entities, choose aggregate roots, design the repository port, write tests, and avoid common mistakes.
 
 ## 7. How to add a new bounded context (module)
 
