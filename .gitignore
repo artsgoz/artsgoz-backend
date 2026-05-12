@@ -5,6 +5,10 @@
 *.dylib
 /bin/
 /dist/
+# Bare Unix binaries accidentally produced by `go build ./cmd/<name>` in the
+# repo root. Pin them explicitly so a stray build artifact never gets staged.
+/migrate
+/artsgoz-backend
 
 # Test / coverage
 *.test
@@ -24,3 +28,4 @@ env.yaml
 # GCP credentials (never commit these)
 *-service-account*.json
 application_default_credentials.json
+migrate
