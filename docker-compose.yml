@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: artsgoz-postgres-local
+    environment:
+      POSTGRES_USER: artsgoz
+      POSTGRES_PASSWORD: artsgoz
+      POSTGRES_DB: artsgoz
+    ports:
+      - "5432:5432"
+    volumes:
+      - artsgoz_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U artsgoz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  artsgoz_pgdata:
