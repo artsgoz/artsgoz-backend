@@ -9,6 +9,7 @@ const (
 	KindConflict     Kind = "conflict"
 	KindNotFound     Kind = "not_found"
 	KindUnauthorized Kind = "unauthorized"
+	KindForbidden    Kind = "forbidden"
 	KindInternal     Kind = "internal"
 )
 
@@ -42,6 +43,10 @@ func NotFound(message string) *Error {
 
 func Unauthorized(message string) *Error {
 	return &Error{Kind: KindUnauthorized, Message: message}
+}
+
+func Forbidden(message string) *Error {
+	return &Error{Kind: KindForbidden, Message: message}
 }
 
 func Internal(message string, err error) *Error {
