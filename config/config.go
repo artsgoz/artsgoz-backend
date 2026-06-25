@@ -21,15 +21,24 @@ const (
 // then fetches a .env-formatted secret payload from GCP Secret Manager and sets
 // each key/value pair into the process environment. Existing env vars are left
 // untouched so shell overrides and prod-injected env keep working.
+//
+// Local-mode shortcut: if DATABASE_URL is already set after loading .env.local
+// (i.e. the developer put it there directly), GCP Secret Manager is skipped
+// entirely — no GCP credentials required.
 func LoadFromSecretManager(ctx context.Context) error {
 	if err := loadDotenvIfPresent(".env.local"); err != nil {
 		return err
 	}
 
+	// Local-mode: skip GCP if DATABASE_URL is already available.
+	if os.Getenv("DATABASE_URL") != "" {
+		return nil
+	}
+
 	projectID := os.Getenv(envGCPProject)
 	secretID := os.Getenv(envSecretID)
 	if projectID == "" || secretID == "" {
-		return fmt.Errorf("config: %s and %s must be set", envGCPProject, envSecretID)
+		return fmt.Errorf("config: %s and %s must be set (or set DATABASE_URL directly for local dev)", envGCPProject, envSecretID)
 	}
 
 	version := os.Getenv(envSecretVersion)
