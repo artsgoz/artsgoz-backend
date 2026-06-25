@@ -14,6 +14,8 @@ func statusFor(kind Kind) int {
 		return fiber.StatusNotFound
 	case KindUnauthorized:
 		return fiber.StatusUnauthorized
+	case KindForbidden:
+		return fiber.StatusForbidden
 	default:
 		return fiber.StatusInternalServerError
 	}
