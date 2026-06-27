@@ -3,43 +3,77 @@ package application
 import (
 	"context"
 	"errors"
+	"log"
+	"net/mail"
+	"strings"
+	"time"
 
+	"firebase.google.com/go/v4/auth"
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/domain"
-	"github.com/artsgoz/artsgoz-backend/internal/platform/apperr"
-	"github.com/artsgoz/artsgoz-backend/internal/platform/validator"
 )
 
-type RegisterUser struct {
-	users domain.UserRepository
+type RegisterUsecase interface {
+	Register(req RegisterRequest) error
 }
 
-func NewRegisterUser(users domain.UserRepository) *RegisterUser {
-	return &RegisterUser{users: users}
+type registerUsecase struct {
+	userRepo     domain.UserRepository
+	firebaseAuth *auth.Client
 }
 
-func (uc *RegisterUser) Execute(ctx context.Context, in RegisterUserInput) (RegisterUserOutput, error) {
-	if err := validator.Struct(in); err != nil {
-		return RegisterUserOutput{}, err
+func NewRegisterUsecase(repo domain.UserRepository, firebaseAuth *auth.Client) RegisterUsecase {
+	return &registerUsecase{
+		userRepo:     repo,
+		firebaseAuth: firebaseAuth,
+	}
+}
+
+func (u *registerUsecase) Register(req RegisterRequest) error {
+	ctx := context.Background()
+
+	// 0. Input Validation
+	req.Email = strings.TrimSpace(req.Email)
+	if req.Email == "" || req.Password == "" {
+		return errors.New("กรุณากรอก email และ password")
+	}
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		return errors.New("รูปแบบ email ไม่ถูกต้อง")
+	}
+	if len(req.Password) < 6 {
+		return errors.New("password ต้องมีอย่างน้อย 6 ตัวอักษร")
 	}
 
-	existing, err := uc.users.FindByEmail(ctx, in.Email)
+	// 1. สร้าง user ใน Firebase Auth
+	params := (&auth.UserToCreate{}).
+		Email(req.Email).
+		Password(req.Password)
+
+	firebaseUser, err := u.firebaseAuth.CreateUser(ctx, params)
 	if err != nil {
-		var appErr *apperr.Error
-		if !errors.As(err, &appErr) || appErr.Kind != apperr.KindNotFound {
-			return RegisterUserOutput{}, err
+		if auth.IsEmailAlreadyExists(err) {
+			return errors.New("อีเมล์นี้มีบัญชีในระบบแล้ว")
 		}
-	}
-	if existing != nil {
-		return RegisterUserOutput{}, apperr.Conflict("email already registered")
-	}
-
-	user, err := domain.NewUser(in.Email, in.Password)
-	if err != nil {
-		return RegisterUserOutput{}, err
-	}
-	if err := uc.users.Save(ctx, user); err != nil {
-		return RegisterUserOutput{}, err
+		log.Printf("Firebase create user error: %v", err)
+		return errors.New("สมัครสมาชิกไม่สำเร็จ")
 	}
 
-	return RegisterUserOutput{ID: user.ID, Email: user.Email}, nil
+	// 2. บันทึกลง Firestore
+	user := &domain.User{
+		FirebaseUID: firebaseUser.UID,
+		Email:       req.Email,
+		Role:        "student",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	if err := u.userRepo.CreateUser(user); err != nil {
+		// Rollback: ลบ user ออกจาก Firebase Auth เพื่อป้องกัน orphan user
+		if delErr := u.firebaseAuth.DeleteUser(ctx, firebaseUser.UID); delErr != nil {
+			log.Printf("Rollback failed - could not delete Firebase user %s: %v", firebaseUser.UID, delErr)
+		}
+		log.Printf("Firestore create user error: %v", err)
+		return errors.New("บันทึกข้อมูลไม่สำเร็จ")
+	}
+
+	return nil
 }
