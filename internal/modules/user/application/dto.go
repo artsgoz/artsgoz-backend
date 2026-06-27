@@ -1,11 +1,15 @@
 package application
 
-type RegisterUserInput struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8,max=64"`
+type LoginRequest struct {
+	IDToken string `json:"id_token"`
 }
 
-type RegisterUserOutput struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	UID  string `json:"uid"`
+	Role string `json:"role"`
 }
