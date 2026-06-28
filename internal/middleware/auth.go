@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// AuthMiddleware — ตรวจสอบ Firebase ID Token จาก Authorization header
+// AuthMiddleware — Verifies Firebase ID Token from Authorization header
 func AuthMiddleware(firebaseAuth *auth.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
