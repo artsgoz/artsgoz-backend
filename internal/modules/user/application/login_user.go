@@ -34,13 +34,13 @@ func (u *loginUsecase) Authenticate(req LoginRequest) (string, string, error) {
 		return "", "", errors.New("token ไม่ถูกต้อง")
 	}
 
-	// 2. ดึง user จาก Firestore ด้วย UID (เร็วกว่า query by email)
+	// 2. Retrieve user from Firestore using UID (faster than querying by email)
 	user, err := u.userRepo.GetByUID(token.UID)
 	if err != nil {
 		return "", "", errors.New("ไม่พบผู้ใช้ในระบบ")
 	}
 
-	// 3. return uid + role
+	// 3. Return uid + role
 	return token.UID, user.Role, nil
 }
 

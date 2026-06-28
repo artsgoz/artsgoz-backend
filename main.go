@@ -18,7 +18,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// 1. เชื่อมต่อ Firebase
+	// 1. Connect to Firebase
 	opt := option.WithCredentialsFile("firebase-service-account.json")
 	firebaseApp, err := firebase.NewApp(ctx, &firebase.Config{
 		ProjectID: "account-test-c25f0",
@@ -43,14 +43,14 @@ func main() {
 	// 4. Fiber App
 	app := fiber.New()
 
-	// 4.1 CORS — อนุญาต Frontend (Next.js) เข้าถึง API
+	// 4.1 CORS — Allow Frontend (Next.js) to access the API
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"http://localhost:3001"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
 	}))
 
-	// 4.2 Rate Limiter — ป้องกัน brute force
+	// 4.2 Rate Limiter — Protect against brute force
 	app.Use(limiter.New(limiter.Config{
 		Max:        20,
 		Expiration: 60 * time.Second,

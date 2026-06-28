@@ -43,7 +43,7 @@ func (u *registerUsecase) Register(req RegisterRequest) error {
 		return errors.New("password ต้องมีอย่างน้อย 6 ตัวอักษร")
 	}
 
-	// 1. สร้าง user ใน Firebase Auth
+	// 1. Create user in Firebase Auth
 	params := (&auth.UserToCreate{}).
 		Email(req.Email).
 		Password(req.Password)
@@ -57,7 +57,7 @@ func (u *registerUsecase) Register(req RegisterRequest) error {
 		return errors.New("สมัครสมาชิกไม่สำเร็จ")
 	}
 
-	// 2. บันทึกลง Firestore
+	// 2. Save to Firestore
 	user := &domain.User{
 		FirebaseUID: firebaseUser.UID,
 		Email:       req.Email,
@@ -67,7 +67,7 @@ func (u *registerUsecase) Register(req RegisterRequest) error {
 	}
 
 	if err := u.userRepo.CreateUser(user); err != nil {
-		// Rollback: ลบ user ออกจาก Firebase Auth เพื่อป้องกัน orphan user
+		// Rollback: Delete user from Firebase Auth to prevent orphan user
 		if delErr := u.firebaseAuth.DeleteUser(ctx, firebaseUser.UID); delErr != nil {
 			log.Printf("Rollback failed - could not delete Firebase user %s: %v", firebaseUser.UID, delErr)
 		}
