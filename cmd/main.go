@@ -5,25 +5,14 @@ import (
 	"log"
 	"os"
 
+	"cloud.google.com/go/firestore"
+
 	"github.com/artsgoz/artsgoz-backend/config"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/article"
-	articlerest "github.com/artsgoz/artsgoz-backend/internal/modules/article/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/club"
-	clubrest "github.com/artsgoz/artsgoz-backend/internal/modules/club/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/credit_tracking"
-	credit_trackingrest "github.com/artsgoz/artsgoz-backend/internal/modules/credit_tracking/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/curriculum"
-	curriculumrest "github.com/artsgoz/artsgoz-backend/internal/modules/curriculum/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/document"
-	documentrest "github.com/artsgoz/artsgoz-backend/internal/modules/document/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/professor"
-	professorrest "github.com/artsgoz/artsgoz-backend/internal/modules/professor/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/user"
-	userrest "github.com/artsgoz/artsgoz-backend/internal/modules/user/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/yellow_card"
-	yellowcardrest "github.com/artsgoz/artsgoz-backend/internal/modules/yellow_card/interface/rest"
+	"github.com/artsgoz/artsgoz-backend/internal/modules/contact"
+	contactrest "github.com/artsgoz/artsgoz-backend/internal/modules/contact/interface/rest"
+	"github.com/artsgoz/artsgoz-backend/internal/modules/FAQ"
+	faqrest "github.com/artsgoz/artsgoz-backend/internal/modules/FAQ/interface/rest"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/httpserver"
-	"github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
 )
 
 func main() {
@@ -33,33 +22,34 @@ func main() {
 		log.Fatalf("load secrets: %v", err)
 	}
 
-	pool, err := postgres.New(ctx, os.Getenv("DATABASE_URL"))
-	if err != nil {
-		log.Fatalf("postgres: %v", err)
+	projectID := os.Getenv("GCP_PROJECT_ID")
+	if projectID == "" {
+		projectID = "chula-artsgoz-website"
 	}
-	defer pool.Close()
 
-	userMod := user.New(pool)
-	professorMod := professor.New(pool)
-	clubMod := club.New(pool)
-	documentMod := document.New(pool)
-	curriculumMod := curriculum.New(pool)
-	creditTrackingMod := credit_tracking.New(pool)
-	yellowCardMod := yellow_card.New(pool)
-	articleMod := article.New(pool)
+	// 1. Initialize Firestore Client
+	fsClient, err := firestore.NewClient(ctx, projectID)
+	if err != nil {
+		log.Fatalf("firestore client init: %v", err)
+	}
+	defer fsClient.Close()
 
+	// 2. Initialize Modules
+	contactMod := contact.New(fsClient)
+	faqMod := FAQ.New(fsClient)
+
+	// 3. Register HTTP Routes
 	app := httpserver.New()
 	api := app.Group("/api/v1")
-	userrest.RegisterRoutes(api, userMod.Handler)
-	professorrest.RegisterRoutes(api, professorMod.Handler)
-	clubrest.RegisterRoutes(api, clubMod.Handler)
-	documentrest.RegisterRoutes(api, documentMod.Handler)
-	curriculumrest.RegisterRoutes(api, curriculumMod.Handler)
-	credit_trackingrest.RegisterRoutes(api, creditTrackingMod.Handler)
-	yellowcardrest.RegisterRoutes(api, yellowCardMod.Handler)
-	articlerest.RegisterRoutes(api, articleMod.Handler)
+	contactrest.RegisterRoutes(api, contactMod.Handler)
+	faqrest.RegisterRoutes(api, faqMod.Handler)
 
-	if err := app.Listen(":3000"); err != nil {
+	// 4. Listen on PORT
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
