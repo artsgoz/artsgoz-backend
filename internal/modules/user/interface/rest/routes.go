@@ -4,7 +4,7 @@ import (
 	"cloud.google.com/go/firestore"
 	"firebase.google.com/go/v4/auth"
 	"github.com/gofiber/fiber/v3"
-	"github.com/artsgoz/artsgoz-backend/internal/middleware"
+	"github.com/artsgoz/artsgoz-backend/internal/modules/user/middleware"
 )
 
 func RegisterRoutes(
