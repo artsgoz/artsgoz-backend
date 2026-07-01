@@ -10,8 +10,6 @@ import (
 	"github.com/artsgoz/artsgoz-backend/config"
 	"github.com/artsgoz/artsgoz-backend/internal/modules/contact"
 	contactrest "github.com/artsgoz/artsgoz-backend/internal/modules/contact/interface/rest"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/FAQ"
-	faqrest "github.com/artsgoz/artsgoz-backend/internal/modules/FAQ/interface/rest"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/httpserver"
 )
 
@@ -36,13 +34,11 @@ func main() {
 
 	// 2. Initialize Modules
 	contactMod := contact.New(fsClient)
-	faqMod := FAQ.New(fsClient)
 
 	// 3. Register HTTP Routes
 	app := httpserver.New()
 	api := app.Group("/api/v1")
 	contactrest.RegisterRoutes(api, contactMod.Handler)
-	faqrest.RegisterRoutes(api, faqMod.Handler)
 
 	// 4. Listen on PORT
 	port := os.Getenv("PORT")
