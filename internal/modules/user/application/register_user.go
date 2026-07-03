@@ -57,7 +57,7 @@ func (u *registerUsecase) Register(req RegisterRequest) error {
 		return errors.New("สมัครสมาชิกไม่สำเร็จ")
 	}
 
-	// 2. Save to Firestore
+	// 2. Save to Firestore (force role to "student" for public registration)
 	user := &domain.User{
 		FirebaseUID: firebaseUser.UID,
 		Email:       req.Email,
