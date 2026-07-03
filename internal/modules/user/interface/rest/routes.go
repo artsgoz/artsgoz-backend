@@ -31,4 +31,5 @@ func RegisterRoutes(
 		})
 	})
 	adminGroup.Get("/users", adminHandler.GetAllUsers)
+	adminGroup.Put("/users/:uid/role", adminHandler.UpdateUserRole)
 }

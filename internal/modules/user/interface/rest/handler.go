@@ -81,3 +81,23 @@ func (h *AdminHandler) GetAllUsers(c fiber.Ctx) error {
 	}
 	return c.JSON(users)
 }
+
+func (h *AdminHandler) UpdateUserRole(c fiber.Ctx) error {
+	uid := c.Params("uid")
+	if uid == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "กรุณาระบุ uid"})
+	}
+
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if err := h.adminUsecase.UpdateUserRole(uid, req.Role); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "อัปเดตบทบาทผู้ใช้สำเร็จ"})
+}
