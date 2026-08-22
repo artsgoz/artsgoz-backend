@@ -10,7 +10,7 @@ cmd/
 ├── api/                 API composition root
 └── migrate/             schema migration command
 internal/
-├── server/              Fiber setup and cross-cutting HTTP middleware
+├── server/              Gin setup and cross-cutting HTTP middleware
 ├── user/
 │   ├── domain/          business model and invariants
 │   ├── usecase/         application operations and consumer-owned ports
@@ -36,7 +36,7 @@ module/bootstrap ──> concrete packages for wiring
 
 - `domain` imports only the standard library. It does not know HTTP, SQL,
   configuration, logging, hashing libraries, or application error codes.
-- `usecase` owns the interfaces it consumes. It does not import Fiber, pgx, a
+- `usecase` owns the interfaces it consumes. It does not import Gin, pgx, a
   controller, or a repository implementation.
 - `controller` translates HTTP DTOs and application errors. HTTP models do not
   become domain models.
@@ -80,7 +80,7 @@ Configuration is resolved in this order:
 
 1. Process environment
 2. `.env.local` for missing values
-3. GCP Secret Manager when `DATABASE_URL` is still missing
+3. GCP Secret Manager when the required `DB_*` fields are incomplete
 
 The API validates configuration before opening PostgreSQL, uses a bounded startup
 context, emits structured JSON logs, and shuts down on `SIGINT` or `SIGTERM`.

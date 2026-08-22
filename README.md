@@ -1,17 +1,18 @@
 # Artsgoz Backend
 
-Go API built with Fiber.
+Go API built with Gin.
 
 ## Run locally
 
-Provide `DATABASE_URL` directly, or configure `GCP_PROJECT_ID`, `GCP_SECRET_ID`,
-and optionally `GCP_SECRET_VERSION` in `.env.local` to load it from Secret Manager.
+Provide `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and optionally
+`DB_SSL_MODE`. Alternatively, configure `GCP_PROJECT_ID`, `GCP_SECRET_ID`, and
+`GCP_SECRET_VERSION` to load those fields from Secret Manager.
 
 ```sh
 go run ./cmd/api
 ```
 
-The API listens on `:3000` by default. Override it with `HTTP_ADDRESS`.
+The API listens on port `3000` by default. Override it with `PORT`.
 
 ## Checks
 

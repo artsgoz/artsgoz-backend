@@ -3,7 +3,7 @@ package user
 import (
 	"time"
 
-	"github.com/gofiber/fiber/v3"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -32,7 +32,7 @@ func New(pool *pgxpool.Pool) *Module {
 	return &Module{handler: controller.NewHandler(registerUser)}
 }
 
-func (m *Module) RegisterRoutes(router fiber.Router) {
+func (m *Module) RegisterRoutes(router *gin.RouterGroup) {
 	group := router.Group("/users")
-	group.Post("/register", m.handler.RegisterUser)
+	group.POST("/register", m.handler.RegisterUser)
 }

@@ -8,8 +8,8 @@
 //	go run ./cmd/migrate force <version>   # mark a version as applied (recovery only)
 //	go run ./cmd/migrate goto <version>    # migrate up or down to a specific version
 //
-// DATABASE_URL is read from the same Secret Manager blob as the main app, so
-// running migrations uses the exact same auth path as running the server.
+// Database settings are read through the same configuration path as the main
+// app, so migrations use the same environment and Secret Manager behavior.
 package main
 
 import (
@@ -26,6 +26,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
+	platformpostgres "github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
 )
 
 func main() {
@@ -40,7 +41,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
-	driverDSN, err := migrationURL(cfg.DatabaseURL)
+	dsn, err := platformpostgres.ConnectionURL(platformpostgres.Config{
+		Host: cfg.DBHost, Port: cfg.DBPort, User: cfg.DBUser,
+		Password: cfg.DBPassword, Database: cfg.DBName, SSLMode: cfg.DBSSLMode,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	driverDSN, err := migrationURL(dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -89,10 +97,10 @@ func main() {
 func migrationURL(dsn string) (string, error) {
 	parsed, err := url.Parse(dsn)
 	if err != nil {
-		return "", fmt.Errorf("parse DATABASE_URL: %w", err)
+		return "", fmt.Errorf("parse database DSN: %w", err)
 	}
 	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
-		return "", fmt.Errorf("DATABASE_URL must use postgres or postgresql scheme")
+		return "", fmt.Errorf("database DSN must use postgres or postgresql scheme")
 	}
 	parsed.Scheme = "pgx5"
 	return parsed.String(), nil

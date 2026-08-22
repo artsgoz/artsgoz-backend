@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -38,32 +39,46 @@ func run() error {
 	startupCtx, cancel := context.WithTimeout(ctx, cfg.StartupTimeout)
 	defer cancel()
 
-	pool, err := postgres.New(startupCtx, cfg.DatabaseURL)
+	databaseConfig := postgres.Config{
+		Host: cfg.DBHost, Port: cfg.DBPort, User: cfg.DBUser,
+		Password: cfg.DBPassword, Database: cfg.DBName, SSLMode: cfg.DBSSLMode,
+	}
+	pool, err := postgres.New(startupCtx, databaseConfig)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
 
-	app := server.New(logger)
-	api := app.Group("/api/v1")
+	engine := server.New(logger, cfg.GinMode)
+	api := engine.Group("/api/v1")
 	user.New(pool).RegisterRoutes(api)
 
+	httpServer := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           engine,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	listenErr := make(chan error, 1)
 	go func() {
-		logger.Info("http server listening", "address", cfg.HTTPAddress)
-		listenErr <- app.Listen(cfg.HTTPAddress)
+		logger.Info("http server listening", "address", httpServer.Addr)
+		listenErr <- httpServer.ListenAndServe()
 	}()
 
 	select {
 	case err := <-listenErr:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
 		return err
 	case <-ctx.Done():
 		logger.Info("shutting down http server")
-		if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 		err := <-listenErr
-		if err != nil && !errors.Is(err, context.Canceled) {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
