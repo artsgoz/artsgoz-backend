@@ -20,7 +20,7 @@ internal/
 │   ├── routes.go         route registration
 │   └── service_test.go   service tests with repository stubs
 └── platform/
-	├── config/           environment and Secret Manager loading
+	├── config/           environment and local dotenv loading
 	└── postgres/         GORM client and pool lifecycle
 migrations/               ordered SQL migrations
 ```
@@ -80,11 +80,8 @@ race-prone check-before-insert query.
 
 ## Configuration
 
-Configuration is resolved in this order:
-
-1. Process environment
-2. `.env.local` for missing values
-3. GCP Secret Manager when required `DB_*` fields are incomplete
+Configuration is read from the process environment after optionally loading
+`.env.local`. Existing environment variables take precedence over the file.
 
 The server uses `PORT` and defaults to `3000`. Gin uses `GIN_MODE` and defaults
 to `release`.

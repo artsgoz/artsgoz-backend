@@ -27,7 +27,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	cfg, err := config.Load(ctx)
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}

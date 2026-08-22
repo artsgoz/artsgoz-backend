@@ -4,29 +4,6 @@ import (
 	"testing"
 )
 
-func TestHasDatabaseParts(t *testing.T) {
-	t.Parallel()
-
-	values := map[string]string{
-		"DB_HOST":     "localhost",
-		"DB_PORT":     "5432",
-		"DB_USER":     "app user",
-		"DB_PASSWORD": "p@ssword",
-		"DB_NAME":     "artsgoz",
-	}
-	if !hasDatabaseParts(values) {
-		t.Fatal("hasDatabaseParts() = false, want true")
-	}
-}
-
-func TestHasDatabasePartsRejectsIncompleteSettings(t *testing.T) {
-	t.Parallel()
-
-	if hasDatabaseParts(map[string]string{"DB_HOST": "localhost"}) {
-		t.Fatal("hasDatabaseParts() = true, want false")
-	}
-}
-
 func TestValidatePort(t *testing.T) {
 	t.Parallel()
 
