@@ -20,12 +20,11 @@ coverage.txt
 .vscode/
 .DS_Store
 
-# Env files — ignore .env, but allow .env.local / .env.example / etc.
-.env
+# Environment files may contain credentials. Commit only the template.
+.env*
+!.env.example
 env.yaml
-!.env.*
 
 # GCP credentials (never commit these)
 *-service-account*.json
 application_default_credentials.json
-migrate

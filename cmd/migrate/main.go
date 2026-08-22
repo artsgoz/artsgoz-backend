@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -24,7 +25,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
-	"github.com/artsgoz/artsgoz-backend/config"
+	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
 )
 
 func main() {
@@ -35,16 +36,14 @@ func main() {
 	cmd := os.Args[1]
 
 	ctx := context.Background()
-	if err := config.LoadFromSecretManager(ctx); err != nil {
-		log.Fatalf("load secrets: %v", err)
+	cfg, err := config.Load(ctx)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
 	}
-
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		log.Fatal("DATABASE_URL is not set")
+	driverDSN, err := migrationURL(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal(err)
 	}
-	// golang-migrate's pgx driver expects a "pgx5://" scheme.
-	driverDSN := "pgx5" + dsn[len("postgres"):]
 
 	m, err := migrate.New("file://migrations", driverDSN)
 	if err != nil {
@@ -85,6 +84,18 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+}
+
+func migrationURL(dsn string) (string, error) {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return "", fmt.Errorf("parse DATABASE_URL: %w", err)
+	}
+	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
+		return "", fmt.Errorf("DATABASE_URL must use postgres or postgresql scheme")
+	}
+	parsed.Scheme = "pgx5"
+	return parsed.String(), nil
 }
 
 func runAndReport(action string, err error) {
