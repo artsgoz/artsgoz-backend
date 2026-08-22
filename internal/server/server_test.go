@@ -1,8 +1,6 @@
 package server_test
 
 import (
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,8 +11,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	engine := server.New(logger, gin.TestMode)
+	engine := server.New(gin.TestMode)
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	response := httptest.NewRecorder()
 
