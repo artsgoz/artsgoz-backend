@@ -1,12 +1,24 @@
-# Artsgoz Backend Repo
+# Artsgoz Backend
 
-gcloud auth
+Go API built with Fiber.
 
-`gcloud auth login`
+## Run locally
 
-`gcloud config set project chula-artsgoz-website`
+Provide `DATABASE_URL` directly, or configure `GCP_PROJECT_ID`, `GCP_SECRET_ID`,
+and optionally `GCP_SECRET_VERSION` in `.env.local` to load it from Secret Manager.
 
-check if env loads correctly
-`go run cmd/main.go`
+```sh
+go run ./cmd/api
+```
 
-currently it will return `postgres: postgres: empty DSN` if it's correctly configured.
+The API listens on `:3000` by default. Override it with `HTTP_ADDRESS`.
+
+## Checks
+
+```sh
+go test ./...
+go vet ./...
+bash scripts/check-deps.sh
+```
+
+See [`docs/architecture.md`](docs/architecture.md) for package boundaries and conventions.
