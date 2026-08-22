@@ -8,12 +8,10 @@
 //	go run ./cmd/migrate force <version>   # mark a version as applied (recovery only)
 //	go run ./cmd/migrate goto <version>    # migrate up or down to a specific version
 //
-// Database settings are read through the same configuration path as the main
-// app, so migrations use the same environment and Secret Manager behavior.
+// Database settings are read through the same configuration path as the API.
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -36,8 +34,7 @@ func main() {
 	}
 	cmd := os.Args[1]
 
-	ctx := context.Background()
-	cfg, err := config.Load(ctx)
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
