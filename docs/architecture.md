@@ -1,86 +1,91 @@
 # Architecture
 
-Artsgoz is a modular Go service organized by business feature. It uses Clean
-Architecture dependency direction without requiring tactical DDD patterns.
+Artsgoz is a modular Go service organized as flat feature packages. The layout
+matches the convention used by the Iconroof API: each business feature owns its
+model, repository, service, HTTP handler, and routes.
 
 ## Layout
 
 ```text
 cmd/
-├── api/                 API composition root
-└── migrate/             schema migration command
+├── api/                  application composition root
+└── migrate/              schema migration command
 internal/
-├── server/              Gin setup and cross-cutting HTTP middleware
+├── server/               Gin engine and HTTP middleware
 ├── user/
-│   ├── domain/          business model and invariants
-│   ├── usecase/         application operations and consumer-owned ports
-│   ├── controller/      HTTP request/response translation
-│   ├── repository/      GORM/PostgreSQL adapter
-│   └── module.go        private feature wiring and public route registration
+│   ├── model.go          GORM model and JSON representation
+│   ├── repository.go     repository interface and GORM implementation
+│   ├── service.go        application and business behavior
+│   ├── handler.go        Gin request/response translation
+│   ├── routes.go         route registration
+│   └── service_test.go   service tests with repository stubs
 └── platform/
-    ├── config/          configuration and secret loading
-    ├── logging/         process logger
-    └── postgres/        GORM client and connection pool lifecycle
-migrations/              ordered database migrations
+    ├── config/           environment and Secret Manager loading
+    ├── logging/          structured process logging
+    └── postgres/         GORM client and pool lifecycle
+migrations/               ordered SQL migrations
 ```
 
-## Dependency rule
-
-Dependencies point toward business behavior:
+## Feature flow
 
 ```text
-controller ──> usecase ──> domain
-repository ──> usecase ──> domain
-module/bootstrap ──> concrete packages for wiring
+Gin handler → Service → Repository interface ← GORM repository
 ```
 
-- `domain` imports only the standard library. It does not know HTTP, SQL,
-  configuration, logging, hashing libraries, or application error codes.
-- `usecase` owns the interfaces it consumes. It does not import Gin, GORM, a
-  controller, or a repository implementation.
-- `controller` translates HTTP DTOs and application errors. HTTP models do not
-  become domain models.
-- `repository` translates database behavior into the use-case contract.
-- `module.go` is the feature composition boundary. Its public API exposes route
-  registration, not handlers or repositories.
-- `cmd` and `module.go` may depend on concrete implementations because their
-  responsibility is dependency wiring.
+All feature code shares one Go package, but responsibilities remain separated by
+file. This favors discoverability and straightforward wiring over strict layer
+isolation.
+
+## Wiring
+
+`cmd/api/main.go` is the composition root. It constructs each dependency
+explicitly:
+
+```go
+repository := user.NewGormRepository(database.DB)
+service := user.NewService(repository)
+handler := user.NewHandler(service)
+user.RegisterRoutes(api, handler)
+```
+
+Feature packages must not create database connections or read environment
+variables. Those responsibilities stay in `internal/platform` and `cmd`.
 
 ## Request flow
 
-Registration follows this path:
+For user registration:
 
-1. The controller binds the JSON request.
-2. The use case validates and normalizes application input.
-3. Injected services hash the password and provide the ID and current time.
-4. The domain constructor creates a valid user.
-5. The PostgreSQL adapter inserts it and translates a unique violation into
-   `usecase.ErrEmailAlreadyExists`.
-6. The controller maps known application errors to stable HTTP responses.
-7. The server error handler logs unexpected failures and returns a safe 500.
+1. The handler binds the HTTP request.
+2. The service validates and normalizes input, hashes the password, and builds
+   the user model.
+3. The repository persists the model with GORM.
+4. PostgreSQL uniqueness errors become `ErrEmailAlreadyExists`.
+5. The handler maps expected errors to stable HTTP responses.
+6. Server middleware logs unexpected errors and returns a safe response.
 
-The database unique constraint is authoritative. There is no check-then-insert
-query because it cannot prevent concurrent registrations.
+The database unique constraint is authoritative; the service does not perform a
+race-prone check-before-insert query.
 
 ## Conventions
 
-- Package names are short, singular, and describe responsibility.
-- Prefer one file per use case once a package contains multiple operations.
-- Keep interfaces small and declare them where they are consumed.
-- Do not introduce an interface solely to mirror a concrete type.
-- Avoid generic `utils` packages; place code with the capability that owns it.
-- Wrap unexpected errors with operation context using `%w`.
-- Keep public error messages separate from logged internal errors.
-- Introduce transaction ports only for use cases that need atomic multi-step work.
-- New behavior requires use-case tests. Add adapter integration tests for SQL.
+- Keep one package per feature and split responsibilities by filename.
+- Define repository interfaces next to their GORM implementations.
+- Keep HTTP request structs private to `handler.go`.
+- Keep SQL/GORM operations in `repository.go`.
+- Keep validation and business behavior in `service.go`.
+- Register routes in `routes.go`; wire dependencies in `cmd/api`.
+- Wrap infrastructure failures with operation context using `%w`.
+- Never expose password hashes in JSON.
+- Add service tests using small repository stubs.
+- Continue using SQL migrations; do not call GORM `AutoMigrate` at runtime.
 
-## Configuration and lifecycle
+## Configuration
 
 Configuration is resolved in this order:
 
 1. Process environment
 2. `.env.local` for missing values
-3. GCP Secret Manager when the required `DB_*` fields are incomplete
+3. GCP Secret Manager when required `DB_*` fields are incomplete
 
-The API validates configuration before opening PostgreSQL, uses a bounded startup
-context, emits structured JSON logs, and shuts down on `SIGINT` or `SIGTERM`.
+The server uses `PORT` and defaults to `3000`. Gin uses `GIN_MODE` and defaults
+to `release`.

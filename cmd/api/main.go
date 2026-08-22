@@ -55,7 +55,10 @@ func run() error {
 
 	engine := server.New(logger, cfg.GinMode)
 	api := engine.Group("/api/v1")
-	user.New(database.DB).RegisterRoutes(api)
+	userRepository := user.NewGormRepository(database.DB)
+	userService := user.NewService(userRepository)
+	userHandler := user.NewHandler(userService)
+	user.RegisterRoutes(api, userHandler)
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
