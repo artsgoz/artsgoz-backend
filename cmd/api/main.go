@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
-	"github.com/artsgoz/artsgoz-backend/internal/platform/logging"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
 	"github.com/artsgoz/artsgoz-backend/internal/server"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
@@ -19,7 +18,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("application stopped", "error", err)
+		log.Printf("application stopped: %v", err)
 		os.Exit(1)
 	}
 }
@@ -32,9 +31,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
-
-	logger := logging.New(cfg.LogLevel)
-	slog.SetDefault(logger)
 
 	startupCtx, cancel := context.WithTimeout(ctx, cfg.StartupTimeout)
 	defer cancel()
@@ -49,11 +45,11 @@ func run() error {
 	}
 	defer func() {
 		if err := database.Close(); err != nil {
-			logger.Error("close database", "error", err)
+			log.Printf("close database: %v", err)
 		}
 	}()
 
-	engine := server.New(logger, cfg.GinMode)
+	engine := server.New(cfg.GinMode)
 	api := engine.Group("/api/v1")
 	userRepository := user.NewGormRepository(database.DB)
 	userService := user.NewService(userRepository)
@@ -67,7 +63,7 @@ func run() error {
 	}
 	listenErr := make(chan error, 1)
 	go func() {
-		logger.Info("http server listening", "address", httpServer.Addr)
+		log.Printf("http server listening on %s", httpServer.Addr)
 		listenErr <- httpServer.ListenAndServe()
 	}()
 
@@ -78,7 +74,7 @@ func run() error {
 		}
 		return err
 	case <-ctx.Done():
-		logger.Info("shutting down http server")
+		log.Print("shutting down http server")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {

@@ -20,9 +20,8 @@ internal/
 │   ├── routes.go         route registration
 │   └── service_test.go   service tests with repository stubs
 └── platform/
-    ├── config/           environment and Secret Manager loading
-    ├── logging/          structured process logging
-    └── postgres/         GORM client and pool lifecycle
+	├── config/           environment and Secret Manager loading
+	└── postgres/         GORM client and pool lifecycle
 migrations/               ordered SQL migrations
 ```
 
@@ -61,7 +60,7 @@ For user registration:
 3. The repository persists the model with GORM.
 4. PostgreSQL uniqueness errors become `ErrEmailAlreadyExists`.
 5. The handler maps expected errors to stable HTTP responses.
-6. Server middleware logs unexpected errors and returns a safe response.
+6. Gin's default middleware logs requests and recovers from panics.
 
 The database unique constraint is authoritative; the service does not perform a
 race-prone check-before-insert query.

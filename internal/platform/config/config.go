@@ -25,7 +25,6 @@ type Config struct {
 	DBPassword     string
 	DBName         string
 	DBSSLMode      string
-	LogLevel       string
 	StartupTimeout time.Duration
 }
 
@@ -52,7 +51,6 @@ func Load(ctx context.Context) (Config, error) {
 		DBPassword:     values["DB_PASSWORD"],
 		DBName:         values["DB_NAME"],
 		DBSSLMode:      values["DB_SSL_MODE"],
-		LogLevel:       valueOr(values, "LOG_LEVEL", "info"),
 		StartupTimeout: 10 * time.Second,
 	}
 	if !hasDatabaseParts(values) {
