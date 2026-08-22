@@ -15,12 +15,12 @@ internal/
 │   ├── domain/          business model and invariants
 │   ├── usecase/         application operations and consumer-owned ports
 │   ├── controller/      HTTP request/response translation
-│   ├── repository/      PostgreSQL adapter
+│   ├── repository/      GORM/PostgreSQL adapter
 │   └── module.go        private feature wiring and public route registration
 └── platform/
     ├── config/          configuration and secret loading
     ├── logging/         process logger
-    └── postgres/        connection pool
+    └── postgres/        GORM client and connection pool lifecycle
 migrations/              ordered database migrations
 ```
 
@@ -36,7 +36,7 @@ module/bootstrap ──> concrete packages for wiring
 
 - `domain` imports only the standard library. It does not know HTTP, SQL,
   configuration, logging, hashing libraries, or application error codes.
-- `usecase` owns the interfaces it consumes. It does not import Gin, pgx, a
+- `usecase` owns the interfaces it consumes. It does not import Gin, GORM, a
   controller, or a repository implementation.
 - `controller` translates HTTP DTOs and application errors. HTTP models do not
   become domain models.

@@ -41,3 +41,16 @@ func TestValidatePort(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateGinMode(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"debug", "release", "test"} {
+		if err := validateGinMode(mode); err != nil {
+			t.Errorf("validateGinMode(%q) error = %v", mode, err)
+		}
+	}
+	if err := validateGinMode("production"); err == nil {
+		t.Fatal("validateGinMode() error = nil, want an error")
+	}
+}
