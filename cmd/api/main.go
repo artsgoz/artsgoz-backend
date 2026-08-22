@@ -43,15 +43,19 @@ func run() error {
 		Host: cfg.DBHost, Port: cfg.DBPort, User: cfg.DBUser,
 		Password: cfg.DBPassword, Database: cfg.DBName, SSLMode: cfg.DBSSLMode,
 	}
-	pool, err := postgres.New(startupCtx, databaseConfig)
+	database, err := postgres.New(startupCtx, databaseConfig)
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			logger.Error("close database", "error", err)
+		}
+	}()
 
 	engine := server.New(logger, cfg.GinMode)
 	api := engine.Group("/api/v1")
-	user.New(pool).RegisterRoutes(api)
+	user.New(database.DB).RegisterRoutes(api)
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

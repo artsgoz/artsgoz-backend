@@ -1,6 +1,6 @@
 # Artsgoz Backend
 
-Go API built with Gin.
+Go API built with Gin, GORM, and PostgreSQL.
 
 ## Run locally
 
@@ -13,6 +13,7 @@ go run ./cmd/api
 ```
 
 The API listens on port `3000` by default. Override it with `PORT`.
+Gin runs in `release` mode by default; use `GIN_MODE=debug` locally when needed.
 
 ## Checks
 

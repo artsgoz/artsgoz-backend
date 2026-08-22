@@ -61,6 +61,9 @@ func Load(ctx context.Context) (Config, error) {
 	if err := validatePort(cfg.Port); err != nil {
 		return Config{}, err
 	}
+	if err := validateGinMode(cfg.GinMode); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
 }
 
@@ -75,6 +78,15 @@ func validatePort(port string) error {
 		return fmt.Errorf("config: PORT must be a number between 1 and 65535")
 	}
 	return nil
+}
+
+func validateGinMode(mode string) error {
+	switch mode {
+	case "debug", "release", "test":
+		return nil
+	default:
+		return fmt.Errorf("config: GIN_MODE must be debug, release, or test")
+	}
 }
 
 func mergeSecret(ctx context.Context, values map[string]string) error {

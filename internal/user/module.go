@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/internal/user/controller"
 	"github.com/artsgoz/artsgoz-backend/internal/user/repository"
@@ -17,8 +17,8 @@ type Module struct {
 	handler *controller.Handler
 }
 
-func New(pool *pgxpool.Pool) *Module {
-	users := repository.NewPostgresUserRepository(pool)
+func New(database *gorm.DB) *Module {
+	users := repository.NewPostgresUserRepository(database)
 	hasher := usecase.PasswordHasherFunc(func(password string) (string, error) {
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		return string(hash), err

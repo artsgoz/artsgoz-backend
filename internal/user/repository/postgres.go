@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/internal/user/domain"
 	"github.com/artsgoz/artsgoz-backend/internal/user/usecase"
@@ -15,21 +16,34 @@ import (
 const uniqueViolation = "23505"
 
 type PostgresUserRepository struct {
-	pool *pgxpool.Pool
+	database *gorm.DB
 }
 
-func NewPostgresUserRepository(pool *pgxpool.Pool) *PostgresUserRepository {
-	return &PostgresUserRepository{pool: pool}
+var _ usecase.UserRepository = (*PostgresUserRepository)(nil)
+
+type userRecord struct {
+	ID           string    `gorm:"column:id;type:uuid;primaryKey"`
+	Email        string    `gorm:"column:email;uniqueIndex;not null"`
+	PasswordHash string    `gorm:"column:password_hash;not null"`
+	CreatedAt    time.Time `gorm:"column:created_at;not null"`
+}
+
+func (userRecord) TableName() string { return "users" }
+
+func NewPostgresUserRepository(database *gorm.DB) *PostgresUserRepository {
+	return &PostgresUserRepository{database: database}
 }
 
 func (r *PostgresUserRepository) Create(ctx context.Context, user domain.User) error {
-	const query = `
-		INSERT INTO users (id, email, password_hash, created_at)
-		VALUES ($1, $2, $3, $4)
-	`
-	_, err := r.pool.Exec(ctx, query, user.ID(), user.Email(), user.PasswordHash(), user.CreatedAt())
+	record := userRecord{
+		ID: user.ID(), Email: user.Email(), PasswordHash: user.PasswordHash(), CreatedAt: user.CreatedAt(),
+	}
+	err := r.database.WithContext(ctx).Create(&record).Error
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return usecase.ErrEmailAlreadyExists
 	}
 	var postgresError *pgconn.PgError
 	if errors.As(err, &postgresError) && postgresError.Code == uniqueViolation {

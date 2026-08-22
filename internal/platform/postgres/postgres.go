@@ -2,11 +2,14 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"net/url"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	gormpostgres "gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type Config struct {
@@ -18,21 +21,38 @@ type Config struct {
 	SSLMode  string
 }
 
-// New builds a pgx connection pool and verifies it with a Ping.
-func New(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
+type Client struct {
+	DB    *gorm.DB
+	sqlDB *sql.DB
+}
+
+// New opens a GORM-backed PostgreSQL connection pool and verifies it.
+func New(ctx context.Context, cfg Config) (*Client, error) {
 	dsn, err := ConnectionURL(cfg)
 	if err != nil {
 		return nil, err
 	}
-	pool, err := pgxpool.New(ctx, dsn)
+	database, err := gorm.Open(gormpostgres.Open(dsn), &gorm.Config{TranslateError: true})
 	if err != nil {
 		return nil, fmt.Errorf("postgres: connect: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
+	sqlDB, err := database.DB()
+	if err != nil {
+		return nil, fmt.Errorf("postgres: access connection pool: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("postgres: ping: %w", err)
 	}
-	return pool, nil
+	return &Client{DB: database, sqlDB: sqlDB}, nil
+}
+
+func (c *Client) Close() error {
+	return c.sqlDB.Close()
 }
 
 // ConnectionURL safely constructs the driver URL from split database settings.
