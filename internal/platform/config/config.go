@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -16,43 +17,71 @@ const (
 )
 
 type Config struct {
-	HTTPAddress    string
-	DatabaseURL    string
+	Port           string
+	GinMode        string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	DBSSLMode      string
 	LogLevel       string
 	StartupTimeout time.Duration
 }
 
-// Load resolves configuration from the process environment, an optional local
-// dotenv file, and finally Secret Manager when DATABASE_URL is not already set.
+// Load resolves split database configuration from the process environment, an
+// optional local dotenv file, and finally Secret Manager when DB_* is incomplete.
 func Load(ctx context.Context) (Config, error) {
 	values := environment()
 	if err := mergeDotenv(values, ".env.local"); err != nil {
 		return Config{}, err
 	}
 
-	if values["DATABASE_URL"] == "" {
+	if !hasDatabaseParts(values) {
 		if err := mergeSecret(ctx, values); err != nil {
 			return Config{}, err
 		}
 	}
 
 	cfg := Config{
-		HTTPAddress:    valueOr(values, "HTTP_ADDRESS", ":3000"),
-		DatabaseURL:    values["DATABASE_URL"],
+		Port:           valueOr(values, "PORT", "3000"),
+		GinMode:        valueOr(values, "GIN_MODE", "release"),
+		DBHost:         values["DB_HOST"],
+		DBPort:         values["DB_PORT"],
+		DBUser:         values["DB_USER"],
+		DBPassword:     values["DB_PASSWORD"],
+		DBName:         values["DB_NAME"],
+		DBSSLMode:      values["DB_SSL_MODE"],
 		LogLevel:       valueOr(values, "LOG_LEVEL", "info"),
 		StartupTimeout: 10 * time.Second,
 	}
-	if cfg.DatabaseURL == "" {
-		return Config{}, fmt.Errorf("config: DATABASE_URL must be set")
+	if !hasDatabaseParts(values) {
+		return Config{}, fmt.Errorf("config: complete DB_* settings must be set")
+	}
+	if err := validatePort(cfg.Port); err != nil {
+		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func hasDatabaseParts(values map[string]string) bool {
+	return values["DB_HOST"] != "" && values["DB_PORT"] != "" && values["DB_USER"] != "" &&
+		values["DB_PASSWORD"] != "" && values["DB_NAME"] != ""
+}
+
+func validatePort(port string) error {
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1 || number > 65535 {
+		return fmt.Errorf("config: PORT must be a number between 1 and 65535")
+	}
+	return nil
 }
 
 func mergeSecret(ctx context.Context, values map[string]string) error {
 	projectID := values[envGCPProject]
 	secretID := values[envSecretID]
 	if projectID == "" || secretID == "" {
-		return fmt.Errorf("config: DATABASE_URL or both %s and %s must be set", envGCPProject, envSecretID)
+		return fmt.Errorf("config: complete DB_* settings or both %s and %s must be set", envGCPProject, envSecretID)
 	}
 	version := valueOr(values, envSecretVersion, "latest")
 	payload, err := accessSecretVersion(ctx, projectID, secretID, version)

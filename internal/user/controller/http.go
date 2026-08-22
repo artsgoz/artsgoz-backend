@@ -2,8 +2,9 @@ package controller
 
 import (
 	"errors"
+	"net/http"
 
-	"github.com/gofiber/fiber/v3"
+	"github.com/gin-gonic/gin"
 
 	"github.com/artsgoz/artsgoz-backend/internal/user/usecase"
 )
@@ -26,31 +27,31 @@ type registerUserResponse struct {
 	Email string `json:"email"`
 }
 
-func (h *Handler) RegisterUser(c fiber.Ctx) error {
+func (h *Handler) RegisterUser(c *gin.Context) {
 	var request registerUserRequest
-	if err := c.Bind().Body(&request); err != nil {
-		return writeError(c, fiber.StatusBadRequest, "invalid_request", "invalid request body")
+	if err := c.ShouldBindJSON(&request); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
 	}
 
-	output, err := h.registerUser.Execute(c.Context(), usecase.RegisterUserInput{
+	output, err := h.registerUser.Execute(c.Request.Context(), usecase.RegisterUserInput{
 		Email: request.Email, Password: request.Password,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidEmail), errors.Is(err, usecase.ErrInvalidPassword):
-			return writeError(c, fiber.StatusBadRequest, "validation", err.Error())
+			writeError(c, http.StatusBadRequest, "validation", err.Error())
 		case errors.Is(err, usecase.ErrEmailAlreadyExists):
-			return writeError(c, fiber.StatusConflict, "conflict", err.Error())
+			writeError(c, http.StatusConflict, "conflict", err.Error())
 		default:
-			return err
+			_ = c.Error(err)
 		}
+		return
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(registerUserResponse{ID: output.ID, Email: output.Email})
+	c.JSON(http.StatusCreated, registerUserResponse{ID: output.ID, Email: output.Email})
 }
 
-func writeError(c fiber.Ctx, status int, code, message string) error {
-	return c.Status(status).JSON(fiber.Map{
-		"error": fiber.Map{"code": code, "message": message},
-	})
+func writeError(c *gin.Context, status int, code, message string) {
+	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }
