@@ -5,9 +5,8 @@ type LoginRequest struct {
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
+	IDToken string `json:"id_token"`
+	Role    string `json:"role,omitempty"`
 }
 
 type LoginResponse struct {

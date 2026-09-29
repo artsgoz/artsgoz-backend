@@ -66,9 +66,9 @@ func main() {
 	// 5. Initialize Fiber App
 	app := httpserver.New()
 
-	// 5.1 CORS — Allow Frontend (Next.js) to access the API
+	// 5.1 CORS — Allow Frontend to access the API
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://localhost:3001"},
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:3001", "http://localhost:4200", "http://localhost:5173"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
 	}))
@@ -79,14 +79,15 @@ func main() {
 		Expiration: 60 * time.Second,
 	}))
 
-	// 6. Register User Module Routes under api prefix
+	// 6. Register User Module Routes (both root and /api/v1 prefix)
+	user.Register(app, firestoreClient, firebaseAuth)
 	api := app.Group("/api/v1")
 	user.Register(api, firestoreClient, firebaseAuth)
 
 	// 7. Start Server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3000"
+		port = "8080"
 	}
 	log.Printf("Server starting on port %s...", port)
 	if err := app.Listen(":" + port); err != nil {
