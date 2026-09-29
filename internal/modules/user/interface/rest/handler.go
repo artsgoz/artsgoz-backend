@@ -1,8 +1,11 @@
 package rest
 
 import (
-	"github.com/gofiber/fiber/v3"
+	"strings"
+
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/application"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 type AuthHandler struct {
@@ -22,6 +25,10 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
+	}
+
+	if strings.TrimSpace(req.IDToken) == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "กรุณาระบุ id_token"})
 	}
 
 	uid, role, err := h.loginUsecase.Authenticate(req)
@@ -54,6 +61,9 @@ func (h *AuthHandler) Me(c fiber.Ctx) error {
 
 	user, err := h.loginUsecase.GetUserProfile(uid)
 	if err != nil {
+		if err.Error() == "ไม่พบผู้ใช้" || err.Error() == "ไม่พบผู้ใช้ในระบบ" {
+			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบข้อมูลผู้ใช้"})
+		}
 		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้"})
 	}
 
@@ -83,7 +93,7 @@ func (h *AdminHandler) GetAllUsers(c fiber.Ctx) error {
 }
 
 func (h *AdminHandler) UpdateUserRole(c fiber.Ctx) error {
-	uid := c.Params("uid")
+	uid := strings.TrimSpace(c.Params("uid"))
 	if uid == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "กรุณาระบุ uid"})
 	}
@@ -92,12 +102,20 @@ func (h *AdminHandler) UpdateUserRole(c fiber.Ctx) error {
 		Role string `json:"role"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	}
+
+	req.Role = strings.TrimSpace(req.Role)
+	if req.Role == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "กรุณาระบุ role"})
 	}
 
 	if err := h.adminUsecase.UpdateUserRole(uid, req.Role); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		if err.Error() == "บทบาทผู้ใช้งานไม่ถูกต้อง" || err.Error() == "กรุณาระบุ uid" {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"message": "อัปเดตบทบาทผู้ใช้สำเร็จ"})
+	return c.JSON(fiber.Map{"message": "อัปเดตบทบาทผู้ใช้งานสำเร็จ"})
 }

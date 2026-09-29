@@ -3,13 +3,12 @@ package application
 import (
 	"context"
 	"errors"
-	"log"
-	"net/mail"
 	"strings"
 	"time"
 
-	"firebase.google.com/go/v4/auth"
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/domain"
+
+	"firebase.google.com/go/v4/auth"
 )
 
 type RegisterUsecase interface {
@@ -29,49 +28,59 @@ func NewRegisterUsecase(repo domain.UserRepository, firebaseAuth *auth.Client) R
 }
 
 func (u *registerUsecase) Register(req RegisterRequest) error {
+	if strings.TrimSpace(req.IDToken) == "" {
+		return errors.New("กรุณาสมัครสมาชิกผ่าน Google เท่านั้น")
+	}
+
+	if u.firebaseAuth == nil {
+		return errors.New("firebase auth is not initialized")
+	}
+
 	ctx := context.Background()
 
-	// 0. Input Validation
-	req.Email = strings.TrimSpace(req.Email)
-	if req.Email == "" || req.Password == "" {
-		return errors.New("กรุณากรอก email และ password")
-	}
-	if _, err := mail.ParseAddress(req.Email); err != nil {
-		return errors.New("รูปแบบ email ไม่ถูกต้อง")
-	}
-	if len(req.Password) < 6 {
-		return errors.New("password ต้องมีอย่างน้อย 6 ตัวอักษร")
-	}
-
-	// 1. Create user in Firebase Auth
-	params := (&auth.UserToCreate{}).
-		Email(req.Email).
-		Password(req.Password)
-
-	firebaseUser, err := u.firebaseAuth.CreateUser(ctx, params)
+	// 1. ตรวจสอบ Firebase ID Token
+	token, err := u.firebaseAuth.VerifyIDToken(ctx, req.IDToken)
 	if err != nil {
-		if auth.IsEmailAlreadyExists(err) {
-			return errors.New("อีเมล์นี้มีบัญชีในระบบแล้ว")
-		}
-		log.Printf("Firebase create user error: %v", err)
-		return errors.New("สมัครสมาชิกไม่สำเร็จ")
+		return errors.New("token ไม่ถูกต้อง")
 	}
 
-	// 2. Save to Firestore (force role to "student" for public registration)
+	// 2. ตรวจสอบว่าต้องเป็น Google เท่านั้น (sign_in_provider ต้องเป็น google.com)
+	if token.Firebase.SignInProvider != "google.com" {
+		return errors.New("ให้เข้าสู่ระบบด้วยอีเมล์จุฬาเท่านั้น")
+	}
+
+	// 3. ตรวจสอบว่าต้องเป็นอีเมลของจุฬาฯ (@chula.ac.th หรือลงท้ายด้วย .chula.ac.th)
+	email := ""
+	if em, ok := token.Claims["email"].(string); ok {
+		email = strings.TrimSpace(strings.ToLower(em))
+	}
+	if !domain.IsChulaEmail(email) {
+		return errors.New("ให้เข้าสู่ระบบด้วยอีเมล์จุฬาเท่านั้น")
+	}
+
+	// 4. ตรวจสอบว่ามีผู้ใช้อยู่แล้วหรือไม่
+	existingUser, err := u.userRepo.GetByUID(token.UID)
+	if err == nil && existingUser != nil {
+		return errors.New("บัญชีนี้มีอยู่ในระบบแล้ว")
+	}
+
+	if email != "" {
+		existingByEmail, emailErr := u.userRepo.GetByEmail(email)
+		if emailErr == nil && existingByEmail != nil {
+			return errors.New("บัญชีนี้มีอยู่ในระบบแล้ว")
+		}
+	}
+
+	// 5. บันทึกลง Firestore (บทบาทเริ่มต้นคือ student เสมอ)
 	user := &domain.User{
-		FirebaseUID: firebaseUser.UID,
-		Email:       req.Email,
+		FirebaseUID: token.UID,
+		Email:       email,
 		Role:        "student",
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
 
 	if err := u.userRepo.CreateUser(user); err != nil {
-		// Rollback: Delete user from Firebase Auth to prevent orphan user
-		if delErr := u.firebaseAuth.DeleteUser(ctx, firebaseUser.UID); delErr != nil {
-			log.Printf("Rollback failed - could not delete Firebase user %s: %v", firebaseUser.UID, delErr)
-		}
-		log.Printf("Firestore create user error: %v", err)
 		return errors.New("บันทึกข้อมูลไม่สำเร็จ")
 	}
 

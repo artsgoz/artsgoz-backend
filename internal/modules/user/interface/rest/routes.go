@@ -18,11 +18,10 @@ func RegisterRoutes(
 	router.Post("/register", authHandler.Register)
 	router.Post("/login", authHandler.Login)
 
-	// 2. Protected routes (requires login)
-	protected := router.Group("", middleware.AuthMiddleware(firebaseAuth))
-	protected.Get("/me", authHandler.Me)
+	// 2. Protected routes (ต้อง login)
+	router.Get("/me", middleware.AuthMiddleware(firebaseAuth), authHandler.Me)
 
-	// 3. Admin-only routes (requires role = "admin")
+	// 3. Admin-only routes (ต้องมี role = "admin")
 	adminGroup := router.Group("/admin", middleware.AuthMiddleware(firebaseAuth), middleware.RequireRole(firestoreClient, "admin"))
 	adminGroup.Get("/dashboard", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{

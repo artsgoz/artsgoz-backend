@@ -2,6 +2,7 @@ package application
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/domain"
 )
@@ -15,9 +16,9 @@ type adminUsecase struct {
 	userRepo domain.UserRepository
 }
 
-func NewAdminUsecase(userRepo domain.UserRepository) AdminUsecase {
+func NewAdminUsecase(repo domain.UserRepository) AdminUsecase {
 	return &adminUsecase{
-		userRepo: userRepo,
+		userRepo: repo,
 	}
 }
 
@@ -26,8 +27,15 @@ func (u *adminUsecase) GetAllUsers() ([]*domain.User, error) {
 }
 
 func (u *adminUsecase) UpdateUserRole(uid string, role string) error {
-	if role != "student" && role != "teacher" && role != "club-member" && role != "admin" {
-		return errors.New("บทบาทไม่ถูกต้อง (ต้องเป็น student, teacher, club-member หรือ admin)")
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return errors.New("กรุณาระบุ uid")
 	}
+
+	role = strings.TrimSpace(role)
+	if role != "student" && role != "teacher" && role != "club-member" && role != "admin" {
+		return errors.New("บทบาทผู้ใช้งานไม่ถูกต้อง")
+	}
+
 	return u.userRepo.UpdateRole(uid, role)
 }
