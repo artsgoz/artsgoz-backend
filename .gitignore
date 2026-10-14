@@ -1,0 +1,30 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+# Bare Unix binaries accidentally produced by `go build ./cmd/<name>` in the
+# repo root. Pin them explicitly so a stray build artifact never gets staged.
+/migrate
+/artsgoz-backend
+
+# Test / coverage
+*.test
+*.out
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Environment files may contain credentials. Commit only the template.
+.env*
+!.env.example
+env.yaml
+
+# GCP credentials (never commit these)
+*-service-account*.json
+application_default_credentials.json
