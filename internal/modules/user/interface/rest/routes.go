@@ -1,9 +1,10 @@
 package rest
 
 import (
-	"cloud.google.com/go/firestore"
 	"firebase.google.com/go/v4/auth"
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/middleware"
 )
 
@@ -12,7 +13,7 @@ func RegisterRoutes(
 	authHandler *AuthHandler,
 	adminHandler *AdminHandler,
 	firebaseAuth *auth.Client,
-	firestoreClient *firestore.Client,
+	pool *pgxpool.Pool,
 ) {
 	// 1. Public routes
 	router.Post("/register", authHandler.Register)
@@ -23,7 +24,7 @@ func RegisterRoutes(
 	protected.Get("/me", authHandler.Me)
 
 	// 3. Admin-only routes (requires role = "admin")
-	adminGroup := router.Group("/admin", middleware.AuthMiddleware(firebaseAuth), middleware.RequireRole(firestoreClient, "admin"))
+	adminGroup := router.Group("/admin", middleware.AuthMiddleware(firebaseAuth), middleware.RequireRole(pool, "admin"))
 	adminGroup.Get("/dashboard", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"message": "Welcome to admin dashboard",

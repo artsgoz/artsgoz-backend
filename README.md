@@ -1,6 +1,6 @@
 # Artsgoz Backend
 
-Go API built with Fiber v3, Firebase Auth, and Firestore.
+Go API built with Fiber v3, Firebase Auth, and PostgreSQL.
 
 ## Run locally
 

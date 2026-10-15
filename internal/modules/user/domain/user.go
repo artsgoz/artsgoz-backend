@@ -3,9 +3,9 @@ package domain
 import "time"
 
 type User struct {
-	FirebaseUID string    `firestore:"firebase_uid" json:"firebase_uid"`
-	Email       string    `firestore:"email" json:"email"`
-	Role        string    `firestore:"role" json:"role"`
-	CreatedAt   time.Time `firestore:"created_at" json:"created_at"`
-	UpdatedAt   time.Time `firestore:"updated_at" json:"updated_at"`
+	FirebaseUID string    `json:"firebase_uid" db:"firebase_uid"`
+	Email       string    `json:"email" db:"email"`
+	Role        string    `json:"role" db:"role"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
 }

@@ -1,17 +1,18 @@
 package user
 
 import (
-	"cloud.google.com/go/firestore"
 	"firebase.google.com/go/v4/auth"
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/application"
-	userFirestore "github.com/artsgoz/artsgoz-backend/internal/modules/user/infrastructure/persistence/firestore"
+	userPostgres "github.com/artsgoz/artsgoz-backend/internal/modules/user/infrastructure/persistence/postgres"
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/interface/rest"
 )
 
-func Register(router fiber.Router, db *firestore.Client, firebaseAuth *auth.Client) {
-	// Initialize Repository
-	userRepo := userFirestore.NewUserRepository(db)
+func Register(router fiber.Router, pool *pgxpool.Pool, firebaseAuth *auth.Client) {
+	// Initialize Repository (PostgreSQL)
+	userRepo := userPostgres.NewUserRepository(pool)
 
 	// Initialize Usecases
 	loginUsecase := application.NewLoginUsecase(userRepo, firebaseAuth)
@@ -23,5 +24,5 @@ func Register(router fiber.Router, db *firestore.Client, firebaseAuth *auth.Clie
 	adminHandler := rest.NewAdminHandler(adminUsecase)
 
 	// Register Routes
-	rest.RegisterRoutes(router, authHandler, adminHandler, firebaseAuth, db)
+	rest.RegisterRoutes(router, authHandler, adminHandler, firebaseAuth, pool)
 }

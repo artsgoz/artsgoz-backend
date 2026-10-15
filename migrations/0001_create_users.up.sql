@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
-    id            UUID PRIMARY KEY,
-    email         TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    firebase_uid TEXT PRIMARY KEY,
+    email        TEXT NOT NULL UNIQUE,
+    role         TEXT NOT NULL DEFAULT 'student',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
