@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -9,6 +10,7 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/api/option"
 
 	"github.com/artsgoz/artsgoz-backend/config"
@@ -24,7 +26,7 @@ func main() {
 		log.Printf("Warning: failed to load secrets from secret manager: %v. Will rely on local environment.", err)
 	}
 
-	// 2. Connect to Firebase
+	// 2. Connect to Firebase (Auth only — user data is now stored in PostgreSQL)
 	var opt option.ClientOption
 	if _, err := os.Stat("firebase-service-account.json"); err == nil {
 		opt = option.WithCredentialsFile("firebase-service-account.json")
@@ -56,12 +58,17 @@ func main() {
 		log.Fatalf("Failed to init Firebase Auth: %v", err)
 	}
 
-	// 4. Firestore Client
-	firestoreClient, err := firebaseApp.Firestore(ctx)
+	// 4. Connect to PostgreSQL
+	pool, err := pgxpool.New(ctx, buildDSN())
 	if err != nil {
-		log.Fatalf("Failed to init Firestore: %v", err)
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
 	}
-	defer firestoreClient.Close()
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		log.Fatalf("Failed to ping PostgreSQL: %v", err)
+	}
+	log.Println("Connected to PostgreSQL successfully")
 
 	// 5. Initialize Fiber App
 	app := httpserver.New()
@@ -81,7 +88,7 @@ func main() {
 
 	// 6. Register User Module Routes under api prefix
 	api := app.Group("/api/v1")
-	user.Register(api, firestoreClient, firebaseAuth)
+	user.Register(api, pool, firebaseAuth)
 
 	// 7. Start Server
 	port := os.Getenv("PORT")
@@ -92,4 +99,26 @@ func main() {
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
+}
+
+// buildDSN constructs a PostgreSQL connection string from environment variables.
+func buildDSN() string {
+	host := getEnvOrDefault("DB_HOST", "localhost")
+	port := getEnvOrDefault("DB_PORT", "5432")
+	dbUser := getEnvOrDefault("DB_USER", "user")
+	password := getEnvOrDefault("DB_PASSWORD", "password")
+	dbName := getEnvOrDefault("DB_NAME", "artsgoz")
+	sslMode := getEnvOrDefault("DB_SSL_MODE", "disable")
+
+	return fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		dbUser, password, host, port, dbName, sslMode,
+	)
+}
+
+func getEnvOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
