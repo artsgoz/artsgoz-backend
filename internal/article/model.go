@@ -34,22 +34,25 @@ type Article struct {
 	Slug               string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"slug"`
 	Title              string         `gorm:"type:varchar(500);not null" json:"title"`
 	Subtitle           string         `gorm:"type:text" json:"subtitle,omitempty"`
-	Excerpt            string         `gorm:"type:text" json:"excerpt"`
+	Excerpt            string         `gorm:"type:text" json:"excerpt,omitempty"`
 	Content            string         `gorm:"type:text;not null" json:"content"`
-	CoverImageURL      string         `gorm:"type:text" json:"cover_image_url"`
-	AuthorID           string         `gorm:"type:varchar(255);index" json:"author_id"`
-	AuthorName         string         `gorm:"type:varchar(255)" json:"author_name"`
-	CategoryIDs        []string       `gorm:"serializer:json" json:"category_ids"`
+	CoverImageURL      string         `gorm:"type:text;column:cover_image_url" json:"cover_image_url"`
+	ImageURL           string         `gorm:"type:text;column:image_url" json:"image_url,omitempty"`
+	AuthorID           string         `gorm:"type:varchar(255);index" json:"author_id,omitempty"`
+	AuthorName         string         `gorm:"type:varchar(255)" json:"author_name,omitempty"`
 	Category           string         `gorm:"type:varchar(100);index" json:"category"`
+	Categories         []string       `gorm:"serializer:json" json:"categories"`
+	CategoryIDs        []string       `gorm:"serializer:json" json:"category_ids,omitempty"`
 	Tags               []string       `gorm:"serializer:json" json:"tags"`
 	Status             Status         `gorm:"type:varchar(50);index;not null;default:'draft'" json:"status"`
 	StatusLabel        string         `gorm:"-" json:"status_label"`
 	Visibility         Visibility     `gorm:"type:varchar(50);not null;default:'public'" json:"visibility"`
 	VisibilityLabel    string         `gorm:"-" json:"visibility_label"`
 	PublishedAt        *time.Time     `gorm:"index" json:"published_at"`
-	SEOMetaDescription string         `gorm:"type:text" json:"seo_meta_description"`
+	MetaDescription    string         `gorm:"type:text;column:meta_description" json:"meta_description"`
+	SEOMetaDescription string         `gorm:"type:text;column:seo_meta_description" json:"seo_meta_description,omitempty"`
 	ViewsCount         int64          `gorm:"not null;default:0" json:"views_count"`
-	References         []string       `gorm:"serializer:json" json:"references"`
+	References         []string       `gorm:"serializer:json" json:"references,omitempty"`
 	CreatedAt          time.Time      `gorm:"not null" json:"created_at"`
 	UpdatedAt          time.Time      `gorm:"not null" json:"updated_at"`
 	DeletedAt          gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
@@ -83,8 +86,32 @@ func (a *Article) PopulateLabels() {
 		a.VisibilityLabel = VisibilityPublicThai
 	}
 
+	// Sync CoverImageURL and ImageURL
+	if a.CoverImageURL == "" && a.ImageURL != "" {
+		a.CoverImageURL = a.ImageURL
+	} else if a.ImageURL == "" && a.CoverImageURL != "" {
+		a.ImageURL = a.CoverImageURL
+	}
+
+	// Sync MetaDescription and SEOMetaDescription
+	if a.MetaDescription == "" && a.SEOMetaDescription != "" {
+		a.MetaDescription = a.SEOMetaDescription
+	} else if a.SEOMetaDescription == "" && a.MetaDescription != "" {
+		a.SEOMetaDescription = a.MetaDescription
+	}
+
+	// Sync Category and Categories
+	if a.Categories == nil {
+		a.Categories = []string{}
+	}
+	if len(a.Categories) == 0 && a.Category != "" {
+		a.Categories = []string{a.Category}
+	} else if a.Category == "" && len(a.Categories) > 0 {
+		a.Category = a.Categories[0]
+	}
+
 	if a.CategoryIDs == nil {
-		a.CategoryIDs = []string{}
+		a.CategoryIDs = a.Categories
 	}
 	if a.Tags == nil {
 		a.Tags = []string{}
@@ -97,7 +124,7 @@ func (a *Article) PopulateLabels() {
 func ParseStatus(s string) Status {
 	clean := strings.ToLower(strings.TrimSpace(s))
 	switch clean {
-	case "published", "เผยแพร่แล้ว":
+	case "published", "เผยแพร่", "เผยแพร่แล้ว":
 		return StatusPublished
 	case "pending", "รออนุมัติ":
 		return StatusPending

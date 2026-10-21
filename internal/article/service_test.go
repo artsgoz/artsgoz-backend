@@ -561,3 +561,97 @@ func TestSlugify(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateArticle_NineRequiredFields(t *testing.T) {
+	t.Parallel()
+
+	repo := newArticleRepoStub()
+	svc := NewService(repo)
+
+	// Test case covering all 9 fields specified for Saraniyakorn Backoffice:
+	// 1. ชื่อบทความ (Title)
+	// 2. เนื้อหา (Content)
+	// 3. รูปภาพ (Cover Image)
+	// 4. สถานะการมองเห็น (เผยแพร่, draft)
+	// 5. วันที่เผยแพร่ (Publish date with Buddhist Era string format e.g. "01/01/2569 , 10:30 AM")
+	// 6. หมวดหมู่ (Categories)
+	// 7. แท็ก (Tags)
+	// 8. URL Slug (Slug)
+	// 9. Meta Description (Meta description)
+	input := CreateArticleInput{
+		Title:           "10 วิธีจัดโต๊ะทำงานแบบ Minimalist เพิ่ม Productivity",
+		Content:         "สภาพแวดล้อมในการทำงานมีผลอย่างมากต่อประสิทธิภาพการทำงานของเรา...",
+		CoverImageURL:   "/uploads/articles/2026/10/desk-minimal.webp",
+		Status:          "เผยแพร่",
+		PublishDate:     "01/01/2569 , 10:30 AM",
+		Categories:      []string{"ภาษา", "ปรัชญา"},
+		Tags:            []string{"อาหรับ", "AI"},
+		Slug:            "10-ways-minimalist-desk-productivity",
+		MetaDescription: "คำอธิบายสั้นๆ สำหรับ Google",
+	}
+
+	created, err := svc.Create(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	// 1. ชื่อบทความ
+	if created.Title != input.Title {
+		t.Errorf("Title = %q, want %q", created.Title, input.Title)
+	}
+
+	// 2. เนื้อหา
+	if created.Content != input.Content {
+		t.Errorf("Content = %q, want %q", created.Content, input.Content)
+	}
+
+	// 3. รูปภาพ
+	if created.CoverImageURL != input.CoverImageURL {
+		t.Errorf("CoverImageURL = %q, want %q", created.CoverImageURL, input.CoverImageURL)
+	}
+	if created.ImageURL != input.CoverImageURL {
+		t.Errorf("ImageURL = %q, want %q", created.ImageURL, input.CoverImageURL)
+	}
+
+	// 4. สถานะการมองเห็น
+	if created.Status != StatusPublished {
+		t.Errorf("Status = %q, want %q", created.Status, StatusPublished)
+	}
+	if created.StatusLabel != StatusPublishedThai {
+		t.Errorf("StatusLabel = %q, want %q", created.StatusLabel, StatusPublishedThai)
+	}
+
+	// 5. วันที่เผยแพร่ (Parsed from Buddhist Era 2569 -> 2026)
+	if created.PublishedAt == nil {
+		t.Fatalf("PublishedAt should not be nil")
+	}
+	if created.PublishedAt.Year() != 2026 || created.PublishedAt.Month() != time.January || created.PublishedAt.Day() != 1 {
+		t.Errorf("PublishedAt = %v, expected 2026-01-01", created.PublishedAt)
+	}
+
+	// 6. หมวดหมู่
+	if len(created.Categories) != 2 || created.Categories[0] != "ภาษา" || created.Categories[1] != "ปรัชญา" {
+		t.Errorf("Categories = %v, want ['ภาษา', 'ปรัชญา']", created.Categories)
+	}
+	if created.Category != "ภาษา" {
+		t.Errorf("Category = %q, want 'ภาษา'", created.Category)
+	}
+
+	// 7. แท็ก
+	if len(created.Tags) != 2 || created.Tags[0] != "อาหรับ" || created.Tags[1] != "AI" {
+		t.Errorf("Tags = %v, want ['อาหรับ', 'AI']", created.Tags)
+	}
+
+	// 8. URL Slug
+	if created.Slug != input.Slug {
+		t.Errorf("Slug = %q, want %q", created.Slug, input.Slug)
+	}
+
+	// 9. Meta Description
+	if created.MetaDescription != input.MetaDescription {
+		t.Errorf("MetaDescription = %q, want %q", created.MetaDescription, input.MetaDescription)
+	}
+	if created.SEOMetaDescription != input.MetaDescription {
+		t.Errorf("SEOMetaDescription = %q, want %q", created.SEOMetaDescription, input.MetaDescription)
+	}
+}

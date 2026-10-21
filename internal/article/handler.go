@@ -18,41 +18,53 @@ func NewHandler(service *Service) *Handler {
 }
 
 type createArticleRequest struct {
-	Title              string     `json:"title" binding:"required"`
-	Slug               string     `json:"slug"`
-	Subtitle           string     `json:"subtitle"`
-	Excerpt            string     `json:"excerpt"`
-	Content            string     `json:"content" binding:"required"`
-	CoverImageURL      string     `json:"cover_image_url"`
-	AuthorID           string     `json:"author_id"`
-	AuthorName         string     `json:"author_name"`
-	CategoryIDs        []string   `json:"category_ids"`
-	Category           string     `json:"category"`
-	Tags               []string   `json:"tags"`
-	Status             string     `json:"status"`
-	Visibility         string     `json:"visibility"`
-	PublishedAt        *time.Time `json:"published_at"`
-	SEOMetaDescription string     `json:"seo_meta_description"`
-	References         []string   `json:"references"`
+	Title              string      `json:"title" binding:"required"`
+	Slug               string      `json:"slug"`
+	Subtitle           string      `json:"subtitle"`
+	Excerpt            string      `json:"excerpt"`
+	Content            string      `json:"content" binding:"required"`
+	CoverImageURL      string      `json:"cover_image_url"`
+	ImageURL           string      `json:"image_url"`
+	CoverImage         string      `json:"cover_image"`
+	Image              string      `json:"image"`
+	AuthorID           string      `json:"author_id"`
+	AuthorName         string      `json:"author_name"`
+	Category           string      `json:"category"`
+	Categories         []string    `json:"categories"`
+	CategoryIDs        []string    `json:"category_ids"`
+	Tags               []string    `json:"tags"`
+	Status             string      `json:"status"`
+	Visibility         string      `json:"visibility"`
+	PublishedAt        *time.Time  `json:"published_at"`
+	PublishDate        interface{} `json:"publish_date"`
+	MetaDescription    string      `json:"meta_description"`
+	SEOMetaDescription string      `json:"seo_meta_description"`
+	References         []string    `json:"references"`
 }
 
 type updateArticleRequest struct {
-	Title              *string    `json:"title"`
-	Slug               *string    `json:"slug"`
-	Subtitle           *string    `json:"subtitle"`
-	Excerpt            *string    `json:"excerpt"`
-	Content            *string    `json:"content"`
-	CoverImageURL      *string    `json:"cover_image_url"`
-	AuthorID           *string    `json:"author_id"`
-	AuthorName         *string    `json:"author_name"`
-	CategoryIDs        []string   `json:"category_ids"`
-	Category           *string    `json:"category"`
-	Tags               []string   `json:"tags"`
-	Status             *string    `json:"status"`
-	Visibility         *string    `json:"visibility"`
-	PublishedAt        *time.Time `json:"published_at"`
-	SEOMetaDescription *string    `json:"seo_meta_description"`
-	References         []string   `json:"references"`
+	Title              *string     `json:"title"`
+	Slug               *string     `json:"slug"`
+	Subtitle           *string     `json:"subtitle"`
+	Excerpt            *string     `json:"excerpt"`
+	Content            *string     `json:"content"`
+	CoverImageURL      *string     `json:"cover_image_url"`
+	ImageURL           *string     `json:"image_url"`
+	CoverImage         *string     `json:"cover_image"`
+	Image              *string     `json:"image"`
+	AuthorID           *string     `json:"author_id"`
+	AuthorName         *string     `json:"author_name"`
+	Category           *string     `json:"category"`
+	Categories         []string    `json:"categories"`
+	CategoryIDs        []string    `json:"category_ids"`
+	Tags               []string    `json:"tags"`
+	Status             *string     `json:"status"`
+	Visibility         *string     `json:"visibility"`
+	PublishedAt        *time.Time  `json:"published_at"`
+	PublishDate        interface{} `json:"publish_date"`
+	MetaDescription    *string     `json:"meta_description"`
+	SEOMetaDescription *string     `json:"seo_meta_description"`
+	References         []string    `json:"references"`
 }
 
 type updateStatusRequest struct {
@@ -74,14 +86,20 @@ func (h *Handler) Create(c *gin.Context) {
 		Excerpt:            req.Excerpt,
 		Content:            req.Content,
 		CoverImageURL:      req.CoverImageURL,
+		ImageURL:           req.ImageURL,
+		CoverImage:         req.CoverImage,
+		Image:              req.Image,
 		AuthorID:           req.AuthorID,
 		AuthorName:         req.AuthorName,
-		CategoryIDs:        req.CategoryIDs,
 		Category:           req.Category,
+		Categories:         req.Categories,
+		CategoryIDs:        req.CategoryIDs,
 		Tags:               req.Tags,
 		Status:             req.Status,
 		Visibility:         req.Visibility,
 		PublishedAt:        req.PublishedAt,
+		PublishDate:        req.PublishDate,
+		MetaDescription:    req.MetaDescription,
 		SEOMetaDescription: req.SEOMetaDescription,
 		References:         req.References,
 	})
@@ -132,14 +150,20 @@ func (h *Handler) Update(c *gin.Context) {
 		Excerpt:            req.Excerpt,
 		Content:            req.Content,
 		CoverImageURL:      req.CoverImageURL,
+		ImageURL:           req.ImageURL,
+		CoverImage:         req.CoverImage,
+		Image:              req.Image,
 		AuthorID:           req.AuthorID,
 		AuthorName:         req.AuthorName,
-		CategoryIDs:        req.CategoryIDs,
 		Category:           req.Category,
+		Categories:         req.Categories,
+		CategoryIDs:        req.CategoryIDs,
 		Tags:               req.Tags,
 		Status:             req.Status,
 		Visibility:         req.Visibility,
 		PublishedAt:        req.PublishedAt,
+		PublishDate:        req.PublishDate,
+		MetaDescription:    req.MetaDescription,
 		SEOMetaDescription: req.SEOMetaDescription,
 		References:         req.References,
 	})
