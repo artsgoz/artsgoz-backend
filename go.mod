@@ -1,6 +1,6 @@
 module github.com/artsgoz/artsgoz-backend
 
-go 1.25.7
+go 1.26.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
@@ -18,7 +18,9 @@ require (
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
+	github.com/gen2brain/webp v0.6.4 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -46,10 +48,11 @@ require (
 	go.opentelemetry.io/otel/metric v1.42.0 // indirect
 	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect
+	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 

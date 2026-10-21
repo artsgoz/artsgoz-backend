@@ -19,6 +19,9 @@ type Config struct {
 	DBName         string
 	DBSSLMode      string
 	StartupTimeout time.Duration
+	UploadDir      string
+	UploadBaseURL  string
+	StorageBucket  string
 }
 
 // Load reads an optional .env.local file and then resolves configuration from
@@ -40,6 +43,9 @@ func Load() (Config, error) {
 		DBName:         os.Getenv("DB_NAME"),
 		DBSSLMode:      envOrDefault("DB_SSL_MODE", "disable"),
 		StartupTimeout: 10 * time.Second,
+		UploadDir:      envOrDefault("UPLOAD_DIR", "./uploads"),
+		UploadBaseURL:  envOrDefault("UPLOAD_BASE_URL", "/uploads"),
+		StorageBucket:  os.Getenv("STORAGE_BUCKET"),
 	}
 	if cfg.DBHost == "" || cfg.DBUser == "" || cfg.DBName == "" {
 		return Config{}, fmt.Errorf("config: DB_HOST, DB_USER, and DB_NAME are required")

@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/artsgoz/artsgoz-backend/internal/article"
+	"github.com/artsgoz/artsgoz-backend/internal/media"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
 	"github.com/artsgoz/artsgoz-backend/internal/server"
@@ -49,12 +51,43 @@ func run() error {
 		}
 	}()
 
+	// Auto-migrate tables
+	if err := database.DB.AutoMigrate(&user.User{}, &article.Article{}); err != nil {
+		log.Printf("warning: auto-migrate: %v", err)
+	}
+
 	engine := server.New(cfg.GinMode)
-	api := engine.Group("/api/v1")
+
+	// Static file serving for uploads
+	engine.Static("/uploads", cfg.UploadDir)
+
+	// API groups: register on both /api and /api/v1
+	api := engine.Group("/api")
+	apiV1 := engine.Group("/api/v1")
+
+	// User module
 	userRepository := user.NewGormRepository(database.DB)
 	userService := user.NewService(userRepository)
 	userHandler := user.NewHandler(userService)
 	user.RegisterRoutes(api, userHandler)
+	user.RegisterRoutes(apiV1, userHandler)
+
+	// Article module
+	articleRepository := article.NewGormRepository(database.DB)
+	articleService := article.NewService(articleRepository)
+	articleHandler := article.NewHandler(articleService)
+	article.RegisterRoutes(api, articleHandler)
+	article.RegisterRoutes(apiV1, articleHandler)
+
+	// Media module
+	var storageProvider media.StorageProvider = media.NewLocalStorageProvider(cfg.UploadDir, cfg.UploadBaseURL)
+	if cfg.StorageBucket != "" {
+		storageProvider = media.NewCloudStorageProvider(cfg.StorageBucket, "", storageProvider)
+	}
+	mediaService := media.NewService(storageProvider)
+	mediaHandler := media.NewHandler(mediaService)
+	media.RegisterRoutes(api, mediaHandler)
+	media.RegisterRoutes(apiV1, mediaHandler)
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
