@@ -33,9 +33,9 @@ func TestHandler_CreateArticle(t *testing.T) {
 		"title":       "ทดสอบสร้างบทความ",
 		"content":     "เนื้อหาบทความทดสอบ",
 		"excerpt":     "คำอธิบายสั้น",
-		"author_name": "วู กานดา",
-		"category":    "ทั่วไป",
-		"status":      "ร่างบทความ",
+		"author_name": "วิภาวรรณ แสงสุข",
+		"category":    "ศิลปะ",
+		"status":      "draft",
 		"tags":        []string{"test", "demo"},
 	}
 	raw, _ := json.Marshal(body)
@@ -60,6 +60,78 @@ func TestHandler_CreateArticle(t *testing.T) {
 	}
 }
 
+func TestHandler_CreateArticle_NineFields(t *testing.T) {
+	t.Parallel()
+
+	router, _ := setupTestRouter()
+
+	// Testing all 9 fields from user request:
+	// 1. ชื่อบทความ (title)
+	// 2. เนื้อหา (content)
+	// 3. รูปภาพ (cover_image_url)
+	// 4. สถานะการมองเห็น (status: เผยแพร่)
+	// 5. วันที่เผยแพร่ (publish_date: 01/01/2569 , 10:30 AM)
+	// 6. หมวดหมู่ (categories: ['ภาษา', 'ปรัชญา'])
+	// 7. แท็ก (tags: ['อาหรับ', 'AI'])
+	// 8. URL Slug (slug: 10-ways-minimalist-desk-productivity)
+	// 9. Meta Description (meta_description: คำอธิบายสั้นๆ สำหรับ Google)
+	body := map[string]interface{}{
+		"title":            "10 วิธีจัดโต๊ะทำงานแบบ Minimalist เพิ่ม Productivity",
+		"content":          "สภาพแวดล้อมในการทำงานมีผลอย่างมากต่อประสิทธิภาพการทำงานของเรา...",
+		"cover_image_url":  "/uploads/articles/2026/10/desk-cover.webp",
+		"status":           "เผยแพร่",
+		"publish_date":     "01/01/2569 , 10:30 AM",
+		"categories":       []string{"ภาษา", "ปรัชญา"},
+		"tags":             []string{"อาหรับ", "AI"},
+		"slug":             "10-ways-minimalist-desk-productivity",
+		"meta_description": "คำอธิบายสั้นๆ สำหรับ Google",
+	}
+	raw, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/api/articles", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status 201 Created, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res Article
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if res.Title != "10 วิธีจัดโต๊ะทำงานแบบ Minimalist เพิ่ม Productivity" {
+		t.Errorf("expected Title %q, got %q", body["title"], res.Title)
+	}
+	if res.CoverImageURL != "/uploads/articles/2026/10/desk-cover.webp" {
+		t.Errorf("expected CoverImageURL %q, got %q", body["cover_image_url"], res.CoverImageURL)
+	}
+	if res.Status != StatusPublished {
+		t.Errorf("expected Status %q, got %q", StatusPublished, res.Status)
+	}
+	if res.StatusLabel != StatusPublishedThai {
+		t.Errorf("expected StatusLabel %q, got %q", StatusPublishedThai, res.StatusLabel)
+	}
+	if res.PublishedAt == nil || res.PublishedAt.Year() != 2026 {
+		t.Errorf("expected PublishedAt year 2026, got %v", res.PublishedAt)
+	}
+	if len(res.Categories) != 2 || res.Categories[0] != "ภาษา" {
+		t.Errorf("expected categories, got %v", res.Categories)
+	}
+	if len(res.Tags) != 2 || res.Tags[0] != "อาหรับ" {
+		t.Errorf("expected tags, got %v", res.Tags)
+	}
+	if res.Slug != "10-ways-minimalist-desk-productivity" {
+		t.Errorf("expected Slug %q, got %q", body["slug"], res.Slug)
+	}
+	if res.MetaDescription != "คำอธิบายสั้นๆ สำหรับ Google" {
+		t.Errorf("expected MetaDescription %q, got %q", body["meta_description"], res.MetaDescription)
+	}
+}
+
 func TestHandler_CreateArticle_BadRequest(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +139,7 @@ func TestHandler_CreateArticle_BadRequest(t *testing.T) {
 
 	// Missing title
 	body := map[string]interface{}{
-		"content": "เนื้อหาไม่มีชื่อเรื่อง",
+		"content": "เนื้อหาไม่มีชื่อ",
 	}
 	raw, _ := json.Marshal(body)
 
@@ -168,7 +240,7 @@ func TestHandler_UpdateStatus(t *testing.T) {
 	})
 
 	statusBody := map[string]interface{}{
-		"status": "เผยแพร่แล้ว",
+		"status": "published",
 	}
 	raw, _ := json.Marshal(statusBody)
 

@@ -18,41 +18,53 @@ var (
 )
 
 type CreateArticleInput struct {
-	Title              string     `json:"title"`
-	Slug               string     `json:"slug"`
-	Subtitle           string     `json:"subtitle"`
-	Excerpt            string     `json:"excerpt"`
-	Content            string     `json:"content"`
-	CoverImageURL      string     `json:"cover_image_url"`
-	AuthorID           string     `json:"author_id"`
-	AuthorName         string     `json:"author_name"`
-	CategoryIDs        []string   `json:"category_ids"`
-	Category           string     `json:"category"`
-	Tags               []string   `json:"tags"`
-	Status             string     `json:"status"`
-	Visibility         string     `json:"visibility"`
-	PublishedAt        *time.Time `json:"published_at"`
-	SEOMetaDescription string     `json:"seo_meta_description"`
-	References         []string   `json:"references"`
+	Title              string      `json:"title"`
+	Slug               string      `json:"slug"`
+	Subtitle           string      `json:"subtitle"`
+	Excerpt            string      `json:"excerpt"`
+	Content            string      `json:"content"`
+	CoverImageURL      string      `json:"cover_image_url"`
+	ImageURL           string      `json:"image_url"`
+	CoverImage         string      `json:"cover_image"`
+	Image              string      `json:"image"`
+	AuthorID           string      `json:"author_id"`
+	AuthorName         string      `json:"author_name"`
+	Category           string      `json:"category"`
+	Categories         []string    `json:"categories"`
+	CategoryIDs        []string    `json:"category_ids"`
+	Tags               []string    `json:"tags"`
+	Status             string      `json:"status"`
+	Visibility         string      `json:"visibility"`
+	PublishedAt        *time.Time  `json:"published_at"`
+	PublishDate        interface{} `json:"publish_date"`
+	MetaDescription    string      `json:"meta_description"`
+	SEOMetaDescription string      `json:"seo_meta_description"`
+	References         []string    `json:"references"`
 }
 
 type UpdateArticleInput struct {
-	Title              *string    `json:"title"`
-	Slug               *string    `json:"slug"`
-	Subtitle           *string    `json:"subtitle"`
-	Excerpt            *string    `json:"excerpt"`
-	Content            *string    `json:"content"`
-	CoverImageURL      *string    `json:"cover_image_url"`
-	AuthorID           *string    `json:"author_id"`
-	AuthorName         *string    `json:"author_name"`
-	CategoryIDs        []string   `json:"category_ids"`
-	Category           *string    `json:"category"`
-	Tags               []string   `json:"tags"`
-	Status             *string    `json:"status"`
-	Visibility         *string    `json:"visibility"`
-	PublishedAt        *time.Time `json:"published_at"`
-	SEOMetaDescription *string    `json:"seo_meta_description"`
-	References         []string   `json:"references"`
+	Title              *string     `json:"title"`
+	Slug               *string     `json:"slug"`
+	Subtitle           *string     `json:"subtitle"`
+	Excerpt            *string     `json:"excerpt"`
+	Content            *string     `json:"content"`
+	CoverImageURL      *string     `json:"cover_image_url"`
+	ImageURL           *string     `json:"image_url"`
+	CoverImage         *string     `json:"cover_image"`
+	Image              *string     `json:"image"`
+	AuthorID           *string     `json:"author_id"`
+	AuthorName         *string     `json:"author_name"`
+	Category           *string     `json:"category"`
+	Categories         []string    `json:"categories"`
+	CategoryIDs        []string    `json:"category_ids"`
+	Tags               []string    `json:"tags"`
+	Status             *string     `json:"status"`
+	Visibility         *string     `json:"visibility"`
+	PublishedAt        *time.Time  `json:"published_at"`
+	PublishDate        interface{} `json:"publish_date"`
+	MetaDescription    *string     `json:"meta_description"`
+	SEOMetaDescription *string     `json:"seo_meta_description"`
+	References         []string    `json:"references"`
 }
 
 type Service struct {
@@ -81,25 +93,56 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		slug = Slugify(slug)
 	}
 
-	// Ensure unique slug
 	uniqueSlug, err := s.ensureUniqueSlug(ctx, slug, "")
 	if err != nil {
 		return nil, err
 	}
 
-	status := ParseStatus(input.Status)
+	// Resolve image from aliases
+	coverImage := strings.TrimSpace(input.CoverImageURL)
+	if coverImage == "" {
+		coverImage = strings.TrimSpace(input.ImageURL)
+	}
+	if coverImage == "" {
+		coverImage = strings.TrimSpace(input.CoverImage)
+	}
+	if coverImage == "" {
+		coverImage = strings.TrimSpace(input.Image)
+	}
+
+	// Resolve status & visibility
+	statusStr := input.Status
+	if statusStr == "" && (input.Visibility == "draft" || input.Visibility == "published" || input.Visibility == "เผยแพร่" || input.Visibility == "เผยแพร่แล้ว" || input.Visibility == "ร่างบทความ") {
+		statusStr = input.Visibility
+	}
+	status := ParseStatus(statusStr)
 	visibility := ParseVisibility(input.Visibility)
 
+	// Resolve published date
 	now := time.Now().UTC()
 	var publishedAt = input.PublishedAt
+	if publishedAt == nil && input.PublishDate != nil {
+		publishedAt = ParsePublishDate(input.PublishDate)
+	}
 	if status == StatusPublished && publishedAt == nil {
 		publishedAt = &now
 	}
 
-	categoryIDs := input.CategoryIDs
-	if categoryIDs == nil {
-		categoryIDs = []string{}
+	// Resolve categories
+	category := strings.TrimSpace(input.Category)
+	categories := input.Categories
+	if categories == nil {
+		categories = input.CategoryIDs
 	}
+	if categories == nil {
+		categories = []string{}
+	}
+	if len(categories) == 0 && category != "" {
+		categories = []string{category}
+	} else if category == "" && len(categories) > 0 {
+		category = categories[0]
+	}
+
 	tags := input.Tags
 	if tags == nil {
 		tags = []string{}
@@ -109,6 +152,12 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		references = []string{}
 	}
 
+	// Resolve meta description
+	metaDesc := strings.TrimSpace(input.MetaDescription)
+	if metaDesc == "" {
+		metaDesc = strings.TrimSpace(input.SEOMetaDescription)
+	}
+
 	item := &Article{
 		ID:                 uuid.NewString(),
 		Slug:               uniqueSlug,
@@ -116,16 +165,19 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		Subtitle:           strings.TrimSpace(input.Subtitle),
 		Excerpt:            strings.TrimSpace(input.Excerpt),
 		Content:            content,
-		CoverImageURL:      strings.TrimSpace(input.CoverImageURL),
+		CoverImageURL:      coverImage,
+		ImageURL:           coverImage,
 		AuthorID:           strings.TrimSpace(input.AuthorID),
 		AuthorName:         strings.TrimSpace(input.AuthorName),
-		CategoryIDs:        categoryIDs,
-		Category:           strings.TrimSpace(input.Category),
+		Category:           category,
+		Categories:         categories,
+		CategoryIDs:        categories,
 		Tags:               tags,
 		Status:             status,
 		Visibility:         visibility,
 		PublishedAt:        publishedAt,
-		SEOMetaDescription: strings.TrimSpace(input.SEOMetaDescription),
+		MetaDescription:    metaDesc,
+		SEOMetaDescription: metaDesc,
 		ViewsCount:         0,
 		References:         references,
 		CreatedAt:          now,
@@ -147,13 +199,11 @@ func (s *Service) Get(ctx context.Context, idOrSlug string) (*Article, error) {
 		return nil, ErrArticleNotFound
 	}
 
-	// Try lookup by ID first
 	item, err := s.repository.GetByID(ctx, clean)
 	if err == nil {
 		return item, nil
 	}
 
-	// Fallback to lookup by slug
 	return s.repository.GetBySlug(ctx, clean)
 }
 
@@ -196,30 +246,70 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInpu
 	if input.Excerpt != nil {
 		item.Excerpt = strings.TrimSpace(*input.Excerpt)
 	}
-	if input.CoverImageURL != nil {
-		item.CoverImageURL = strings.TrimSpace(*input.CoverImageURL)
+
+	// Image aliases
+	var newImage string
+	if input.CoverImageURL != nil && strings.TrimSpace(*input.CoverImageURL) != "" {
+		newImage = strings.TrimSpace(*input.CoverImageURL)
+	} else if input.ImageURL != nil && strings.TrimSpace(*input.ImageURL) != "" {
+		newImage = strings.TrimSpace(*input.ImageURL)
+	} else if input.CoverImage != nil && strings.TrimSpace(*input.CoverImage) != "" {
+		newImage = strings.TrimSpace(*input.CoverImage)
+	} else if input.Image != nil && strings.TrimSpace(*input.Image) != "" {
+		newImage = strings.TrimSpace(*input.Image)
 	}
+	if newImage != "" {
+		item.CoverImageURL = newImage
+		item.ImageURL = newImage
+	}
+
 	if input.AuthorID != nil {
 		item.AuthorID = strings.TrimSpace(*input.AuthorID)
 	}
 	if input.AuthorName != nil {
 		item.AuthorName = strings.TrimSpace(*input.AuthorName)
 	}
-	if input.CategoryIDs != nil {
+
+	// Categories
+	if input.Categories != nil {
+		item.Categories = input.Categories
+		item.CategoryIDs = input.Categories
+		if len(item.Categories) > 0 && item.Category == "" {
+			item.Category = item.Categories[0]
+		}
+	} else if input.CategoryIDs != nil {
+		item.Categories = input.CategoryIDs
 		item.CategoryIDs = input.CategoryIDs
+		if len(item.Categories) > 0 && item.Category == "" {
+			item.Category = item.Categories[0]
+		}
 	}
 	if input.Category != nil {
 		item.Category = strings.TrimSpace(*input.Category)
+		if len(item.Categories) == 0 && item.Category != "" {
+			item.Categories = []string{item.Category}
+			item.CategoryIDs = item.Categories
+		}
 	}
+
 	if input.Tags != nil {
 		item.Tags = input.Tags
 	}
 	if input.Visibility != nil {
 		item.Visibility = ParseVisibility(*input.Visibility)
 	}
-	if input.SEOMetaDescription != nil {
-		item.SEOMetaDescription = strings.TrimSpace(*input.SEOMetaDescription)
+
+	// Meta description aliases
+	if input.MetaDescription != nil {
+		desc := strings.TrimSpace(*input.MetaDescription)
+		item.MetaDescription = desc
+		item.SEOMetaDescription = desc
+	} else if input.SEOMetaDescription != nil {
+		desc := strings.TrimSpace(*input.SEOMetaDescription)
+		item.MetaDescription = desc
+		item.SEOMetaDescription = desc
 	}
+
 	if input.References != nil {
 		item.References = input.References
 	}
@@ -235,6 +325,8 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInpu
 
 	if input.PublishedAt != nil {
 		item.PublishedAt = input.PublishedAt
+	} else if input.PublishDate != nil {
+		item.PublishedAt = ParsePublishDate(input.PublishDate)
 	}
 
 	item.UpdatedAt = time.Now().UTC()
@@ -268,7 +360,6 @@ func (s *Service) Delete(ctx context.Context, id string, hard bool) error {
 }
 
 func (s *Service) List(ctx context.Context, params ListParams) (*ListResult, error) {
-	// Parse sort shortcuts if passed via sortBy
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	order := strings.ToLower(strings.TrimSpace(params.Order))
 
@@ -342,4 +433,65 @@ func Slugify(s string) string {
 		return "article"
 	}
 	return s
+}
+
+func ParsePublishDate(val interface{}) *time.Time {
+	if val == nil {
+		return nil
+	}
+	switch v := val.(type) {
+	case time.Time:
+		t := v.UTC()
+		return &t
+	case *time.Time:
+		if v != nil {
+			t := v.UTC()
+			return &t
+		}
+		return nil
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil
+		}
+
+		formats := []string{
+			time.RFC3339,
+			time.RFC3339Nano,
+			"2006-01-02T15:04:05",
+			"2006-01-02 15:04:05",
+			"2006-01-02",
+			"02/01/2006 , 03:04 PM",
+			"02/01/2006, 03:04 PM",
+			"02/01/2006 15:04",
+			"02/01/2006",
+		}
+
+		for _, layout := range formats {
+			if parsed, err := time.Parse(layout, s); err == nil {
+				year := parsed.Year()
+				if year >= 2400 {
+					parsed = time.Date(year-543, parsed.Month(), parsed.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), parsed.Nanosecond(), parsed.Location())
+				}
+				utc := parsed.UTC()
+				return &utc
+			}
+		}
+
+		// Handle Thai Buddhist Era year (BE >= 2500, e.g. "01/01/2569 , 10:30 AM")
+		re := regexp.MustCompile(`(25\d{2})`)
+		if match := re.FindStringSubmatch(s); len(match) > 1 {
+			var beYear int
+			fmt.Sscanf(match[1], "%d", &beYear)
+			ceYear := beYear - 543
+			replaced := re.ReplaceAllString(s, fmt.Sprintf("%04d", ceYear))
+			for _, layout := range formats {
+				if parsed, err := time.Parse(layout, replaced); err == nil {
+					utc := parsed.UTC()
+					return &utc
+				}
+			}
+		}
+	}
+	return nil
 }
