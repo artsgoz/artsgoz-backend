@@ -2,7 +2,7 @@ package user
 
 import (
 	"firebase.google.com/go/v4/auth"
-	"github.com/gofiber/fiber/v3"
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/application"
@@ -10,7 +10,7 @@ import (
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/interface/rest"
 )
 
-func Register(router fiber.Router, pool *pgxpool.Pool, firebaseAuth *auth.Client) {
+func Register(router *gin.RouterGroup, pool *pgxpool.Pool, firebaseAuth *auth.Client) {
 	// Initialize Repository (PostgreSQL)
 	userRepo := userPostgres.NewUserRepository(pool)
 

@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
-	"time"
 
 	firebase "firebase.google.com/go/v4"
-	"github.com/gofiber/fiber/v3/middleware/cors"
-	"github.com/gofiber/fiber/v3/middleware/limiter"
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/api/option"
 
@@ -70,21 +69,20 @@ func main() {
 	}
 	log.Println("Connected to PostgreSQL successfully")
 
-	// 5. Initialize Fiber App
+	// 5. Initialize Gin Engine
 	app := httpserver.New()
 
 	// 5.1 CORS — Allow Frontend (Next.js) to access the API
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://localhost:3001"},
-		AllowHeaders: []string{"Content-Type", "Authorization"},
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
-	}))
-
-	// 5.2 Rate Limiter — Protect against brute force
-	app.Use(limiter.New(limiter.Config{
-		Max:        20,
-		Expiration: 60 * time.Second,
-	}))
+	app.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "http://localhost:3001")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	})
 
 	// 6. Register User Module Routes under api prefix
 	api := app.Group("/api/v1")
@@ -96,7 +94,7 @@ func main() {
 		port = "3000"
 	}
 	log.Printf("Server starting on port %s...", port)
-	if err := app.Listen(":" + port); err != nil {
+	if err := app.Run(":" + port); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }

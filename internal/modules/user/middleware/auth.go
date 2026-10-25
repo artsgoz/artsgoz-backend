@@ -1,33 +1,36 @@
 package middleware
 
 import (
-	"context"
+	"net/http"
 	"strings"
 
 	"firebase.google.com/go/v4/auth"
-	"github.com/gofiber/fiber/v3"
+	"github.com/gin-gonic/gin"
 )
 
 // AuthMiddleware — Verifies Firebase ID Token from Authorization header
-func AuthMiddleware(firebaseAuth *auth.Client) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		authHeader := c.Get("Authorization")
+func AuthMiddleware(firebaseAuth *auth.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			return c.Status(401).JSON(fiber.Map{"error": "กรุณา login ก่อน"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+			return
 		}
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			return c.Status(401).JSON(fiber.Map{"error": "invalid authorization format"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization format"})
+			return
 		}
 
 		idToken := strings.TrimPrefix(authHeader, "Bearer ")
 
-		token, err := firebaseAuth.VerifyIDToken(context.Background(), idToken)
+		token, err := firebaseAuth.VerifyIDToken(c.Request.Context(), idToken)
 		if err != nil {
-			return c.Status(401).JSON(fiber.Map{"error": "token ไม่ถูกต้อง"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token ไม่ถูกต้อง"})
+			return
 		}
 
-		c.Locals("uid", token.UID)
-		return c.Next()
+		c.Set("uid", token.UID)
+		c.Next()
 	}
 }

@@ -1,36 +1,39 @@
 package rest
 
 import (
+	"net/http"
+
 	"firebase.google.com/go/v4/auth"
-	"github.com/gofiber/fiber/v3"
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/middleware"
 )
 
 func RegisterRoutes(
-	router fiber.Router,
+	router *gin.RouterGroup,
 	authHandler *AuthHandler,
 	adminHandler *AdminHandler,
 	firebaseAuth *auth.Client,
 	pool *pgxpool.Pool,
 ) {
 	// 1. Public routes
-	router.Post("/register", authHandler.Register)
-	router.Post("/login", authHandler.Login)
+	router.POST("/register", authHandler.Register)
+	router.POST("/login", authHandler.Login)
 
 	// 2. Protected routes (requires login)
 	protected := router.Group("", middleware.AuthMiddleware(firebaseAuth))
-	protected.Get("/me", authHandler.Me)
+	protected.GET("/me", authHandler.Me)
 
 	// 3. Admin-only routes (requires role = "admin")
 	adminGroup := router.Group("/admin", middleware.AuthMiddleware(firebaseAuth), middleware.RequireRole(pool, "admin"))
-	adminGroup.Get("/dashboard", func(c fiber.Ctx) error {
-		return c.JSON(fiber.Map{
+	adminGroup.GET("/dashboard", func(c *gin.Context) {
+		role, _ := c.Get("role")
+		c.JSON(http.StatusOK, gin.H{
 			"message": "Welcome to admin dashboard",
-			"role":    c.Locals("role"),
+			"role":    role,
 		})
 	})
-	adminGroup.Get("/users", adminHandler.GetAllUsers)
-	adminGroup.Put("/users/:uid/role", adminHandler.UpdateUserRole)
+	adminGroup.GET("/users", adminHandler.GetAllUsers)
+	adminGroup.PUT("/users/:uid/role", adminHandler.UpdateUserRole)
 }

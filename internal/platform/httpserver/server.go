@@ -1,14 +1,10 @@
 package httpserver
 
 import (
-	"github.com/gofiber/fiber/v3"
-
-	"github.com/artsgoz/artsgoz-backend/internal/platform/apperr"
+	"github.com/gin-gonic/gin"
 )
 
-// New returns a Fiber app pre-wired with the central apperr error handler.
-func New() *fiber.App {
-	return fiber.New(fiber.Config{
-		ErrorHandler: apperr.FiberErrorHandler,
-	})
+// New returns a Gin engine configured with default middleware (Logger and Recovery).
+func New() *gin.Engine {
+	return gin.Default()
 }
