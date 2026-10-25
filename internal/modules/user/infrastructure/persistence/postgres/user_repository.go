@@ -99,3 +99,17 @@ func (r *userRepository) UpdateRole(uid string, role string) error {
 	}
 	return nil
 }
+
+func (r *userRepository) UpdateProfile(uid string, email string) (*domain.User, error) {
+	ctx := context.Background()
+	cmd, err := r.pool.Exec(ctx,
+		`UPDATE users SET email = $1, updated_at = $2 WHERE firebase_uid = $3`,
+		email, time.Now(), uid)
+	if err != nil {
+		return nil, err
+	}
+	if cmd.RowsAffected() == 0 {
+		return nil, errors.New("ไม่พบผู้ใช้")
+	}
+	return r.GetByUID(uid)
+}

@@ -11,6 +11,7 @@ import (
 type LoginUsecase interface {
 	Authenticate(req LoginRequest) (string, string, error)
 	GetUserProfile(uid string) (*domain.User, error)
+	Logout(ctx context.Context, uid string) error
 }
 
 type loginUsecase struct {
@@ -46,4 +47,11 @@ func (u *loginUsecase) Authenticate(req LoginRequest) (string, string, error) {
 
 func (u *loginUsecase) GetUserProfile(uid string) (*domain.User, error) {
 	return u.userRepo.GetByUID(uid)
+}
+
+func (u *loginUsecase) Logout(ctx context.Context, uid string) error {
+	if u.firebaseAuth != nil && uid != "" {
+		return u.firebaseAuth.RevokeRefreshTokens(ctx, uid)
+	}
+	return nil
 }

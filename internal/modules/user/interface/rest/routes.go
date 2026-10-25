@@ -17,7 +17,12 @@ func RegisterRoutes(
 	firebaseAuth *auth.Client,
 	pool *pgxpool.Pool,
 ) {
-	// 1. Public routes
+	// 1. Auth routes
+	authGroup := router.Group("/auth")
+	authGroup.POST("/login", authHandler.Login)
+	authGroup.POST("/logout", authHandler.Logout)
+
+	// Keep existing root-level auth endpoints for backward compatibility
 	router.POST("/register", authHandler.Register)
 	router.POST("/login", authHandler.Login)
 
@@ -36,4 +41,6 @@ func RegisterRoutes(
 	})
 	adminGroup.GET("/users", adminHandler.GetAllUsers)
 	adminGroup.PUT("/users/:uid/role", adminHandler.UpdateUserRole)
+	adminGroup.GET("/me", adminHandler.GetProfile)
+	adminGroup.PUT("/me", adminHandler.UpdateProfile)
 }
