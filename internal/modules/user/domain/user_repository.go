@@ -6,4 +6,5 @@ type UserRepository interface {
 	CreateUser(user *User) error
 	GetAllUsers() ([]*User, error)
 	UpdateRole(uid string, role string) error
+	UpdateProfile(uid string, email string) (*User, error)
 }

@@ -14,3 +14,7 @@ type LoginResponse struct {
 	UID  string `json:"uid"`
 	Role string `json:"role"`
 }
+
+type UpdateProfileRequest struct {
+	Email string `json:"email"`
+}

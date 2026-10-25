@@ -87,3 +87,15 @@ func (r *userRepository) UpdateRole(uid string, role string) error {
 	})
 	return err
 }
+
+func (r *userRepository) UpdateProfile(uid string, email string) (*domain.User, error) {
+	ctx := context.Background()
+	_, err := r.db.Collection("users").Doc(uid).Update(ctx, []firestore.Update{
+		{Path: "email", Value: email},
+		{Path: "updated_at", Value: time.Now()},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.GetByUID(uid)
+}
