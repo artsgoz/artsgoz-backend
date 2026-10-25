@@ -1,7 +1,10 @@
 package rest
 
 import (
-	"github.com/gofiber/fiber/v3"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user/application"
 )
 
@@ -17,47 +20,59 @@ func NewAuthHandler(l application.LoginUsecase, r application.RegisterUsecase) *
 	}
 }
 
-func (h *AuthHandler) Login(c fiber.Ctx) error {
+func (h *AuthHandler) Login(c *gin.Context) {
 	var req application.LoginRequest
 
-	if err := c.Bind().JSON(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
 	}
 
 	uid, role, err := h.loginUsecase.Authenticate(req)
 	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
 	}
 
-	return c.JSON(fiber.Map{"uid": uid, "role": role})
+	c.JSON(http.StatusOK, gin.H{"uid": uid, "role": role})
 }
 
-func (h *AuthHandler) Register(c fiber.Ctx) error {
+func (h *AuthHandler) Register(c *gin.Context) {
 	var req application.RegisterRequest
 
-	if err := c.Bind().JSON(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
 	}
 
 	if err := h.registerUsecase.Register(req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	return c.Status(201).JSON(fiber.Map{"message": "สมัครสมาชิกสำเร็จ"})
+	c.JSON(http.StatusCreated, gin.H{"message": "สมัครสมาชิกสำเร็จ"})
 }
 
-func (h *AuthHandler) Me(c fiber.Ctx) error {
-	uid, ok := c.Locals("uid").(string)
+func (h *AuthHandler) Me(c *gin.Context) {
+	val, exists := c.Get("uid")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		return
+	}
+
+	uid, ok := val.(string)
 	if !ok || uid == "" {
-		return c.Status(401).JSON(fiber.Map{"error": "กรุณา login ก่อน"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		return
 	}
 
 	user, err := h.loginUsecase.GetUserProfile(uid)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้"})
+		return
 	}
 
-	return c.JSON(fiber.Map{
+	c.JSON(http.StatusOK, gin.H{
 		"uid":     user.FirebaseUID,
 		"role":    user.Role,
 		"message": "authenticated successfully",
@@ -74,30 +89,34 @@ func NewAdminHandler(u application.AdminUsecase) *AdminHandler {
 	}
 }
 
-func (h *AdminHandler) GetAllUsers(c fiber.Ctx) error {
+func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 	users, err := h.adminUsecase.GetAllUsers()
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้: " + err.Error()})
+		return
 	}
-	return c.JSON(users)
+	c.JSON(http.StatusOK, users)
 }
 
-func (h *AdminHandler) UpdateUserRole(c fiber.Ctx) error {
-	uid := c.Params("uid")
+func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
+	uid := c.Param("uid")
 	if uid == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "กรุณาระบุ uid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "กรุณาระบุ uid"})
+		return
 	}
 
 	var req struct {
 		Role string `json:"role"`
 	}
-	if err := c.Bind().JSON(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
 	}
 
 	if err := h.adminUsecase.UpdateUserRole(uid, req.Role); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	return c.JSON(fiber.Map{"message": "อัปเดตบทบาทผู้ใช้สำเร็จ"})
+	c.JSON(http.StatusOK, gin.H{"message": "อัปเดตบทบาทผู้ใช้สำเร็จ"})
 }

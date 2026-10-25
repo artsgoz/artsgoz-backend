@@ -1,37 +1,46 @@
 package middleware
 
 import (
-	"context"
+	"net/http"
 
-	"github.com/gofiber/fiber/v3"
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // RequireRole — Check the User's Role from PostgreSQL
-// Always use after AuthMiddleware (requires uid to be present in Locals)
-func RequireRole(pool *pgxpool.Pool, allowedRoles ...string) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		uid, ok := c.Locals("uid").(string)
+// Always use after AuthMiddleware (requires uid to be present in context)
+func RequireRole(pool *pgxpool.Pool, allowedRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		val, exists := c.Get("uid")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+			return
+		}
+
+		uid, ok := val.(string)
 		if !ok || uid == "" {
-			return c.Status(401).JSON(fiber.Map{"error": "กรุณา login ก่อน"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+			return
 		}
 
 		// Retrieve user role from PostgreSQL
 		var role string
-		err := pool.QueryRow(context.Background(),
+		err := pool.QueryRow(c.Request.Context(),
 			`SELECT role FROM users WHERE firebase_uid = $1`, uid).Scan(&role)
 		if err != nil {
-			return c.Status(403).JSON(fiber.Map{"error": "ไม่พบข้อมูลผู้ใช้"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "ไม่พบข้อมูลผู้ใช้"})
+			return
 		}
 
 		// Check if the user's role matches the specified allowedRoles
 		for _, allowed := range allowedRoles {
 			if role == allowed {
-				c.Locals("role", role)
-				return c.Next()
+				c.Set("role", role)
+				c.Next()
+				return
 			}
 		}
 
-		return c.Status(403).JSON(fiber.Map{"error": "คุณไม่มีสิทธิ์เข้าถึง"})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "คุณไม่มีสิทธิ์เข้าถึง"})
 	}
 }
