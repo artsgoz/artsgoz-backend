@@ -24,6 +24,7 @@ coverage.txt
 .env*
 !.env.example
 env.yaml
+.env.local
 
 # GCP credentials (never commit these)
 *-service-account*.json
