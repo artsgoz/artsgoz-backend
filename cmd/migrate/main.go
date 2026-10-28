@@ -8,12 +8,11 @@
 //	go run ./cmd/migrate force <version>   # mark a version as applied (recovery only)
 //	go run ./cmd/migrate goto <version>    # migrate up or down to a specific version
 //
-// DATABASE_URL is read from the same Secret Manager blob as the main app, so
-// running migrations uses the exact same auth path as running the server.
+// DATABASE_URL is read from the environment or .env.local.
+// Existing environment variables take precedence.
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -34,9 +33,8 @@ func main() {
 	}
 	cmd := os.Args[1]
 
-	ctx := context.Background()
-	if err := config.LoadFromSecretManager(ctx); err != nil {
-		log.Fatalf("load secrets: %v", err)
+	if err := config.Load(); err != nil {
+		log.Fatalf("load configuration: %v", err)
 	}
 
 	dsn := os.Getenv("DATABASE_URL")

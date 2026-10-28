@@ -2,27 +2,26 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 
 	firebase "firebase.google.com/go/v4"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/api/option"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/config"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/user"
-	"github.com/artsgoz/artsgoz-backend/internal/platform/httpserver"
+	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// 1. Load configuration secrets from GCP Secret Manager (if configured)
-	if err := config.LoadFromSecretManager(ctx); err != nil {
-		log.Printf("Warning: failed to load secrets from secret manager: %v. Will rely on local environment.", err)
+	// 1. Load local configuration (if present)
+	if err := config.Load(); err != nil {
+		log.Printf("Warning: failed to load local configuration: %v. Will rely on environment variables.", err)
 	}
 
 	// 2. Connect to Firebase (Auth only — user data is now stored in PostgreSQL)
@@ -58,19 +57,21 @@ func main() {
 	}
 
 	// 4. Connect to PostgreSQL
-	pool, err := pgxpool.New(ctx, buildDSN())
+	db, err := gorm.Open(postgres.Open(config.DatabaseURL()), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
 	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		log.Fatalf("Failed to ping PostgreSQL: %v", err)
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to get PostgreSQL connection pool: %v", err)
 	}
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
+	defer sqlDB.Close()
 	log.Println("Connected to PostgreSQL successfully")
 
 	// 5. Initialize Gin Engine
-	app := httpserver.New()
+	app := gin.Default()
 
 	// 5.1 CORS — Allow Frontend (Next.js) to access the API
 	app.Use(func(c *gin.Context) {
@@ -86,7 +87,7 @@ func main() {
 
 	// 6. Register User Module Routes under api prefix
 	api := app.Group("/api/v1")
-	user.Register(api, pool, firebaseAuth)
+	user.Register(api, db, firebaseAuth)
 
 	// 7. Start Server
 	port := os.Getenv("PORT")
@@ -97,26 +98,4 @@ func main() {
 	if err := app.Run(":" + port); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-}
-
-// buildDSN constructs a PostgreSQL connection string from environment variables.
-func buildDSN() string {
-	host := getEnvOrDefault("DB_HOST", "localhost")
-	port := getEnvOrDefault("DB_PORT", "5432")
-	dbUser := getEnvOrDefault("DB_USER", "user")
-	password := getEnvOrDefault("DB_PASSWORD", "password")
-	dbName := getEnvOrDefault("DB_NAME", "artsgoz")
-	sslMode := getEnvOrDefault("DB_SSL_MODE", "disable")
-
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		dbUser, password, host, port, dbName, sslMode,
-	)
-}
-
-func getEnvOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

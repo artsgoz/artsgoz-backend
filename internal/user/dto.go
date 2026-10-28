@@ -1,4 +1,4 @@
-package application
+package user
 
 type LoginRequest struct {
 	IDToken string `json:"id_token"`
