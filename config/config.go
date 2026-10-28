@@ -17,30 +17,15 @@ func Load() error {
 	return nil
 }
 
-// DatabaseURL builds the PostgreSQL connection URL from environment variables.
 func DatabaseURL() string {
-	dbName := getEnvOrDefault("DB_NAME", "artsgoz")
+	dbName := os.Getenv("DB_NAME")
 	u := url.URL{
-		Scheme: "postgres",
-		User: url.UserPassword(
-			getEnvOrDefault("DB_USER", "user"),
-			getEnvOrDefault("DB_PASSWORD", "password"),
-		),
-		Host: net.JoinHostPort(
-			getEnvOrDefault("DB_HOST", "localhost"),
-			getEnvOrDefault("DB_PORT", "5432"),
-		),
-		Path:    "/" + dbName,
-		RawPath: "/" + url.PathEscape(dbName),
+		Scheme:   "postgres",
+		User:     url.UserPassword(os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD")),
+		Host:     net.JoinHostPort(os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
+		Path:     "/" + dbName,
+		RawPath:  "/" + url.PathEscape(dbName),
+		RawQuery: url.Values{"sslmode": {os.Getenv("DB_SSL_MODE")}}.Encode(),
 	}
-	query := url.Values{"sslmode": {getEnvOrDefault("DB_SSL_MODE", "disable")}}
-	u.RawQuery = query.Encode()
 	return u.String()
-}
-
-func getEnvOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
