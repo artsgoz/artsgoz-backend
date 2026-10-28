@@ -20,9 +20,9 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// 1. Load configuration secrets from GCP Secret Manager (if configured)
-	if err := config.LoadFromSecretManager(ctx); err != nil {
-		log.Printf("Warning: failed to load secrets from secret manager: %v. Will rely on local environment.", err)
+	// 1. Load local configuration (if present)
+	if err := config.Load(); err != nil {
+		log.Printf("Warning: failed to load local configuration: %v. Will rely on environment variables.", err)
 	}
 
 	// 2. Connect to Firebase (Auth only — user data is now stored in PostgreSQL)
