@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -57,7 +56,7 @@ func main() {
 	}
 
 	// 4. Connect to PostgreSQL
-	pool, err := pgxpool.New(ctx, buildDSN())
+	pool, err := pgxpool.New(ctx, config.DatabaseURL())
 	if err != nil {
 		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
 	}
@@ -96,26 +95,4 @@ func main() {
 	if err := app.Run(":" + port); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-}
-
-// buildDSN constructs a PostgreSQL connection string from environment variables.
-func buildDSN() string {
-	host := getEnvOrDefault("DB_HOST", "localhost")
-	port := getEnvOrDefault("DB_PORT", "5432")
-	dbUser := getEnvOrDefault("DB_USER", "user")
-	password := getEnvOrDefault("DB_PASSWORD", "password")
-	dbName := getEnvOrDefault("DB_NAME", "artsgoz")
-	sslMode := getEnvOrDefault("DB_SSL_MODE", "disable")
-
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		dbUser, password, host, port, dbName, sslMode,
-	)
-}
-
-func getEnvOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
