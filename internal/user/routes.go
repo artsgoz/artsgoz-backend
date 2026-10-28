@@ -1,4 +1,4 @@
-package rest
+package user
 
 import (
 	"net/http"
@@ -6,9 +6,24 @@ import (
 	"firebase.google.com/go/v4/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/artsgoz/artsgoz-backend/internal/modules/user/middleware"
 )
+
+func Register(router *gin.RouterGroup, pool *pgxpool.Pool, firebaseAuth *auth.Client) {
+	// Initialize Repository (PostgreSQL)
+	userRepo := NewUserRepository(pool)
+
+	// Initialize Services
+	loginService := NewLoginService(userRepo, firebaseAuth)
+	registerService := NewRegisterService(userRepo, firebaseAuth)
+	adminService := NewAdminService(userRepo)
+
+	// Initialize Handlers
+	authHandler := NewAuthHandler(loginService, registerService)
+	adminHandler := NewAdminHandler(adminService)
+
+	// Register Routes
+	RegisterRoutes(router, authHandler, adminHandler, firebaseAuth, pool)
+}
 
 func RegisterRoutes(
 	router *gin.RouterGroup,
@@ -27,11 +42,11 @@ func RegisterRoutes(
 	router.POST("/login", authHandler.Login)
 
 	// 2. Protected routes (requires login)
-	protected := router.Group("", middleware.AuthMiddleware(firebaseAuth))
+	protected := router.Group("", AuthMiddleware(firebaseAuth))
 	protected.GET("/me", authHandler.Me)
 
 	// 3. Admin-only routes (requires role = "admin")
-	adminGroup := router.Group("/admin", middleware.AuthMiddleware(firebaseAuth), middleware.RequireRole(pool, "admin"))
+	adminGroup := router.Group("/admin", AuthMiddleware(firebaseAuth), RequireRole(pool, "admin"))
 	adminGroup.GET("/dashboard", func(c *gin.Context) {
 		role, _ := c.Get("role")
 		c.JSON(http.StatusOK, gin.H{

@@ -1,34 +1,32 @@
-package rest
+package user
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/artsgoz/artsgoz-backend/internal/modules/user/application"
 )
 
 type AuthHandler struct {
-	loginUsecase    application.LoginUsecase
-	registerUsecase application.RegisterUsecase
+	loginService    LoginService
+	registerService RegisterService
 }
 
-func NewAuthHandler(l application.LoginUsecase, r application.RegisterUsecase) *AuthHandler {
+func NewAuthHandler(l LoginService, r RegisterService) *AuthHandler {
 	return &AuthHandler{
-		loginUsecase:    l,
-		registerUsecase: r,
+		loginService:    l,
+		registerService: r,
 	}
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req application.LoginRequest
+	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
-	uid, role, err := h.loginUsecase.Authenticate(req)
+	uid, role, err := h.loginService.Authenticate(req)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -38,14 +36,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
-	var req application.RegisterRequest
+	var req RegisterRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
-	if err := h.registerUsecase.Register(req); err != nil {
+	if err := h.registerService.Register(req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -66,7 +64,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	user, err := h.loginUsecase.GetUserProfile(uid)
+	user, err := h.loginService.GetUserProfile(uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้"})
 		return
@@ -82,24 +80,24 @@ func (h *AuthHandler) Me(c *gin.Context) {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	if val, exists := c.Get("uid"); exists {
 		if uid, ok := val.(string); ok && uid != "" {
-			_ = h.loginUsecase.Logout(c.Request.Context(), uid)
+			_ = h.loginService.Logout(c.Request.Context(), uid)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "ออกจากระบบสำเร็จ"})
 }
 
 type AdminHandler struct {
-	adminUsecase application.AdminUsecase
+	adminService AdminService
 }
 
-func NewAdminHandler(u application.AdminUsecase) *AdminHandler {
+func NewAdminHandler(u AdminService) *AdminHandler {
 	return &AdminHandler{
-		adminUsecase: u,
+		adminService: u,
 	}
 }
 
 func (h *AdminHandler) GetAllUsers(c *gin.Context) {
-	users, err := h.adminUsecase.GetAllUsers()
+	users, err := h.adminService.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้: " + err.Error()})
 		return
@@ -122,7 +120,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	if err := h.adminUsecase.UpdateUserRole(uid, req.Role); err != nil {
+	if err := h.adminService.UpdateUserRole(uid, req.Role); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -143,7 +141,7 @@ func (h *AdminHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	user, err := h.adminUsecase.GetProfile(uid)
+	user, err := h.adminService.GetProfile(uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้: " + err.Error()})
 		return
@@ -172,13 +170,13 @@ func (h *AdminHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	var req application.UpdateProfileRequest
+	var req UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
-	user, err := h.adminUsecase.UpdateProfile(uid, req)
+	user, err := h.adminService.UpdateProfile(uid, req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

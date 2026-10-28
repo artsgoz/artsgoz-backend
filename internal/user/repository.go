@@ -1,4 +1,4 @@
-package postgres
+package user
 
 import (
 	"context"
@@ -7,26 +7,33 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/artsgoz/artsgoz-backend/internal/modules/user/domain"
 )
+
+type UserRepository interface {
+	GetByEmail(email string) (*User, error)
+	GetByUID(uid string) (*User, error)
+	CreateUser(user *User) error
+	GetAllUsers() ([]*User, error)
+	UpdateRole(uid string, role string) error
+	UpdateProfile(uid string, email string) (*User, error)
+}
 
 type userRepository struct {
 	pool *pgxpool.Pool
 }
 
-func NewUserRepository(pool *pgxpool.Pool) domain.UserRepository {
+func NewUserRepository(pool *pgxpool.Pool) UserRepository {
 	return &userRepository{pool: pool}
 }
 
-func (r *userRepository) GetByEmail(email string) (*domain.User, error) {
+func (r *userRepository) GetByEmail(email string) (*User, error) {
 	ctx := context.Background()
 	row := r.pool.QueryRow(ctx,
 		`SELECT firebase_uid, email, role, created_at, updated_at
 		   FROM users
 		  WHERE email = $1`, email)
 
-	var user domain.User
+	var user User
 	err := row.Scan(&user.FirebaseUID, &user.Email, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errors.New("ไม่พบผู้ใช้")
@@ -37,14 +44,14 @@ func (r *userRepository) GetByEmail(email string) (*domain.User, error) {
 	return &user, nil
 }
 
-func (r *userRepository) GetByUID(uid string) (*domain.User, error) {
+func (r *userRepository) GetByUID(uid string) (*User, error) {
 	ctx := context.Background()
 	row := r.pool.QueryRow(ctx,
 		`SELECT firebase_uid, email, role, created_at, updated_at
 		   FROM users
 		  WHERE firebase_uid = $1`, uid)
 
-	var user domain.User
+	var user User
 	err := row.Scan(&user.FirebaseUID, &user.Email, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errors.New("ไม่พบผู้ใช้")
@@ -55,7 +62,7 @@ func (r *userRepository) GetByUID(uid string) (*domain.User, error) {
 	return &user, nil
 }
 
-func (r *userRepository) CreateUser(user *domain.User) error {
+func (r *userRepository) CreateUser(user *User) error {
 	ctx := context.Background()
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO users (firebase_uid, email, role, created_at, updated_at)
@@ -64,7 +71,7 @@ func (r *userRepository) CreateUser(user *domain.User) error {
 	return err
 }
 
-func (r *userRepository) GetAllUsers() ([]*domain.User, error) {
+func (r *userRepository) GetAllUsers() ([]*User, error) {
 	ctx := context.Background()
 	rows, err := r.pool.Query(ctx,
 		`SELECT firebase_uid, email, role, created_at, updated_at
@@ -75,9 +82,9 @@ func (r *userRepository) GetAllUsers() ([]*domain.User, error) {
 	}
 	defer rows.Close()
 
-	var users []*domain.User
+	var users []*User
 	for rows.Next() {
-		var user domain.User
+		var user User
 		if err := rows.Scan(&user.FirebaseUID, &user.Email, &user.Role, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -100,7 +107,7 @@ func (r *userRepository) UpdateRole(uid string, role string) error {
 	return nil
 }
 
-func (r *userRepository) UpdateProfile(uid string, email string) (*domain.User, error) {
+func (r *userRepository) UpdateProfile(uid string, email string) (*User, error) {
 	ctx := context.Background()
 	cmd, err := r.pool.Exec(ctx,
 		`UPDATE users SET email = $1, updated_at = $2 WHERE firebase_uid = $3`,

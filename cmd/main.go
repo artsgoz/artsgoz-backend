@@ -12,7 +12,7 @@ import (
 	"google.golang.org/api/option"
 
 	"github.com/artsgoz/artsgoz-backend/config"
-	"github.com/artsgoz/artsgoz-backend/internal/modules/user"
+	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
 
 func main() {
