@@ -14,7 +14,6 @@ import (
 
 	"github.com/artsgoz/artsgoz-backend/config"
 	"github.com/artsgoz/artsgoz-backend/internal/modules/user"
-	"github.com/artsgoz/artsgoz-backend/internal/platform/httpserver"
 )
 
 func main() {
@@ -70,7 +69,7 @@ func main() {
 	log.Println("Connected to PostgreSQL successfully")
 
 	// 5. Initialize Gin Engine
-	app := httpserver.New()
+	app := gin.Default()
 
 	// 5.1 CORS — Allow Frontend (Next.js) to access the API
 	app.Use(func(c *gin.Context) {
