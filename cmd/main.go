@@ -8,8 +8,9 @@ import (
 
 	firebase "firebase.google.com/go/v4"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/api/option"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/config"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
@@ -56,15 +57,17 @@ func main() {
 	}
 
 	// 4. Connect to PostgreSQL
-	pool, err := pgxpool.New(ctx, config.DatabaseURL())
+	db, err := gorm.Open(postgres.Open(config.DatabaseURL()), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
 	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		log.Fatalf("Failed to ping PostgreSQL: %v", err)
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to get PostgreSQL connection pool: %v", err)
 	}
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
+	defer sqlDB.Close()
 	log.Println("Connected to PostgreSQL successfully")
 
 	// 5. Initialize Gin Engine
@@ -84,7 +87,7 @@ func main() {
 
 	// 6. Register User Module Routes under api prefix
 	api := app.Group("/api/v1")
-	user.Register(api, pool, firebaseAuth)
+	user.Register(api, db, firebaseAuth)
 
 	// 7. Start Server
 	port := os.Getenv("PORT")

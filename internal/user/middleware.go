@@ -6,7 +6,7 @@ import (
 
 	"firebase.google.com/go/v4/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 )
 
 // AuthMiddleware — Verifies Firebase ID Token from Authorization header
@@ -38,7 +38,7 @@ func AuthMiddleware(firebaseAuth *auth.Client) gin.HandlerFunc {
 
 // RequireRole — Check the User's Role from PostgreSQL
 // Always use after AuthMiddleware (requires uid to be present in context)
-func RequireRole(pool *pgxpool.Pool, allowedRoles ...string) gin.HandlerFunc {
+func RequireRole(db *gorm.DB, allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		val, exists := c.Get("uid")
 		if !exists {
@@ -53,9 +53,8 @@ func RequireRole(pool *pgxpool.Pool, allowedRoles ...string) gin.HandlerFunc {
 		}
 
 		// Retrieve user role from PostgreSQL
-		var role string
-		err := pool.QueryRow(c.Request.Context(),
-			`SELECT role FROM users WHERE firebase_uid = $1`, uid).Scan(&role)
+		var user User
+		err := db.WithContext(c.Request.Context()).Select("role").Where("firebase_uid = ?", uid).Take(&user).Error
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "ไม่พบข้อมูลผู้ใช้"})
 			return
@@ -63,8 +62,8 @@ func RequireRole(pool *pgxpool.Pool, allowedRoles ...string) gin.HandlerFunc {
 
 		// Check if the user's role matches the specified allowedRoles
 		for _, allowed := range allowedRoles {
-			if role == allowed {
-				c.Set("role", role)
+			if user.Role == allowed {
+				c.Set("role", user.Role)
 				c.Next()
 				return
 			}

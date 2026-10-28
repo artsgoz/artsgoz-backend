@@ -1,12 +1,10 @@
 package user
 
 import (
-	"context"
 	"errors"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 )
 
 type UserRepository interface {
@@ -19,23 +17,17 @@ type UserRepository interface {
 }
 
 type userRepository struct {
-	pool *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewUserRepository(pool *pgxpool.Pool) UserRepository {
-	return &userRepository{pool: pool}
+func NewUserRepository(db *gorm.DB) UserRepository {
+	return &userRepository{db: db}
 }
 
 func (r *userRepository) GetByEmail(email string) (*User, error) {
-	ctx := context.Background()
-	row := r.pool.QueryRow(ctx,
-		`SELECT firebase_uid, email, role, created_at, updated_at
-		   FROM users
-		  WHERE email = $1`, email)
-
 	var user User
-	err := row.Scan(&user.FirebaseUID, &user.Email, &user.Role, &user.CreatedAt, &user.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := r.db.Where("email = ?", email).Take(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errors.New("ไม่พบผู้ใช้")
 	}
 	if err != nil {
@@ -45,15 +37,9 @@ func (r *userRepository) GetByEmail(email string) (*User, error) {
 }
 
 func (r *userRepository) GetByUID(uid string) (*User, error) {
-	ctx := context.Background()
-	row := r.pool.QueryRow(ctx,
-		`SELECT firebase_uid, email, role, created_at, updated_at
-		   FROM users
-		  WHERE firebase_uid = $1`, uid)
-
 	var user User
-	err := row.Scan(&user.FirebaseUID, &user.Email, &user.Role, &user.CreatedAt, &user.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := r.db.Where("firebase_uid = ?", uid).Take(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errors.New("ไม่พบผู้ใช้")
 	}
 	if err != nil {
@@ -63,59 +49,41 @@ func (r *userRepository) GetByUID(uid string) (*User, error) {
 }
 
 func (r *userRepository) CreateUser(user *User) error {
-	ctx := context.Background()
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO users (firebase_uid, email, role, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		user.FirebaseUID, user.Email, user.Role, user.CreatedAt, user.UpdatedAt)
-	return err
+	return r.db.Create(user).Error
 }
 
 func (r *userRepository) GetAllUsers() ([]*User, error) {
-	ctx := context.Background()
-	rows, err := r.pool.Query(ctx,
-		`SELECT firebase_uid, email, role, created_at, updated_at
-		   FROM users
-		  ORDER BY created_at DESC`)
-	if err != nil {
+	var users []*User
+	if err := r.db.Order("created_at DESC").Find(&users).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var users []*User
-	for rows.Next() {
-		var user User
-		if err := rows.Scan(&user.FirebaseUID, &user.Email, &user.Role, &user.CreatedAt, &user.UpdatedAt); err != nil {
-			return nil, err
-		}
-		users = append(users, &user)
+	if len(users) == 0 {
+		return nil, nil
 	}
-	return users, rows.Err()
+	return users, nil
 }
 
 func (r *userRepository) UpdateRole(uid string, role string) error {
-	ctx := context.Background()
-	cmd, err := r.pool.Exec(ctx,
-		`UPDATE users SET role = $1, updated_at = $2 WHERE firebase_uid = $3`,
-		role, time.Now(), uid)
-	if err != nil {
-		return err
+	result := r.db.Model(&User{}).Where("firebase_uid = ?", uid).Updates(map[string]any{
+		"role": role, "updated_at": time.Now(),
+	})
+	if result.Error != nil {
+		return result.Error
 	}
-	if cmd.RowsAffected() == 0 {
+	if result.RowsAffected == 0 {
 		return errors.New("ไม่พบผู้ใช้")
 	}
 	return nil
 }
 
 func (r *userRepository) UpdateProfile(uid string, email string) (*User, error) {
-	ctx := context.Background()
-	cmd, err := r.pool.Exec(ctx,
-		`UPDATE users SET email = $1, updated_at = $2 WHERE firebase_uid = $3`,
-		email, time.Now(), uid)
-	if err != nil {
-		return nil, err
+	result := r.db.Model(&User{}).Where("firebase_uid = ?", uid).Updates(map[string]any{
+		"email": email, "updated_at": time.Now(),
+	})
+	if result.Error != nil {
+		return nil, result.Error
 	}
-	if cmd.RowsAffected() == 0 {
+	if result.RowsAffected == 0 {
 		return nil, errors.New("ไม่พบผู้ใช้")
 	}
 	return r.GetByUID(uid)
