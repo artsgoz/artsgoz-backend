@@ -1,16 +1,18 @@
 package user
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type UserRepository interface {
 	GetByEmail(email string) (*User, error)
-	GetByUID(uid string) (*User, error)
-	CreateUser(user *User) error
+	FindByUID(ctx context.Context, uid string) (*User, error)
+	CreateUser(ctx context.Context, user *User) error
 	GetAllUsers() ([]*User, error)
 	UpdateRole(uid string, role string) error
 	UpdateProfile(uid string, email string) (*User, error)
@@ -36,11 +38,12 @@ func (r *userRepository) GetByEmail(email string) (*User, error) {
 	return &user, nil
 }
 
-func (r *userRepository) GetByUID(uid string) (*User, error) {
+// FindByUID returns nil, nil when the user has not completed registration.
+func (r *userRepository) FindByUID(ctx context.Context, uid string) (*User, error) {
 	var user User
-	err := r.db.Where("firebase_uid = ?", uid).Take(&user).Error
+	err := r.db.WithContext(ctx).Where("firebase_uid = ?", uid).Take(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errors.New("user not found")
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
@@ -48,8 +51,12 @@ func (r *userRepository) GetByUID(uid string) (*User, error) {
 	return &user, nil
 }
 
-func (r *userRepository) CreateUser(user *User) error {
-	return r.db.Create(user).Error
+// CreateUser inserts a profile without overwriting one created by a concurrent request.
+func (r *userRepository) CreateUser(ctx context.Context, user *User) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "firebase_uid"}},
+		DoNothing: true,
+	}).Create(user).Error
 }
 
 func (r *userRepository) GetAllUsers() ([]*User, error) {
@@ -86,5 +93,5 @@ func (r *userRepository) UpdateProfile(uid string, email string) (*User, error) 
 	if result.RowsAffected == 0 {
 		return nil, errors.New("user not found")
 	}
-	return r.GetByUID(uid)
+	return r.FindByUID(context.Background(), uid)
 }

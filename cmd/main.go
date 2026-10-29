@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/config"
+	"github.com/artsgoz/artsgoz-backend/internal/auth"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
 
@@ -85,9 +86,12 @@ func main() {
 		c.Next()
 	})
 
-	// 6. Register User Module Routes under api prefix
+	// 6. Wire authentication and user modules under the API prefix.
 	api := app.Group("/api/v1")
-	user.Register(api, db, firebaseAuth)
+	userRepo := user.NewUserRepository(db)
+	authService := auth.NewService(userRepo, firebaseAuth)
+	auth.Register(api, authService)
+	user.Register(api, db, auth.Middleware(authService))
 
 	// 7. Start Server
 	port := os.Getenv("PORT")
