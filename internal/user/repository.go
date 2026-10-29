@@ -28,7 +28,7 @@ func (r *userRepository) GetByEmail(email string) (*User, error) {
 	var user User
 	err := r.db.Where("email = ?", email).Take(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errors.New("ไม่พบผู้ใช้")
+		return nil, errors.New("user not found")
 	}
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func (r *userRepository) GetByUID(uid string) (*User, error) {
 	var user User
 	err := r.db.Where("firebase_uid = ?", uid).Take(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errors.New("ไม่พบผู้ใช้")
+		return nil, errors.New("user not found")
 	}
 	if err != nil {
 		return nil, err
@@ -71,7 +71,7 @@ func (r *userRepository) UpdateRole(uid string, role string) error {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return errors.New("ไม่พบผู้ใช้")
+		return errors.New("user not found")
 	}
 	return nil
 }
@@ -84,7 +84,7 @@ func (r *userRepository) UpdateProfile(uid string, email string) (*User, error) 
 		return nil, result.Error
 	}
 	if result.RowsAffected == 0 {
-		return nil, errors.New("ไม่พบผู้ใช้")
+		return nil, errors.New("user not found")
 	}
 	return r.GetByUID(uid)
 }

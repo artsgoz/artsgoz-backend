@@ -1,6 +1,7 @@
 package user
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -48,25 +49,25 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "สมัครสมาชิกสำเร็จ"})
+	c.JSON(http.StatusCreated, gin.H{"message": "registration successful"})
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
 	val, exists := c.Get("uid")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
 	uid, ok := val.(string)
 	if !ok || uid == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
 	user, err := h.loginService.GetUserProfile(uid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve user data"})
 		return
 	}
 
@@ -78,12 +79,17 @@ func (h *AuthHandler) Me(c *gin.Context) {
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
-	if val, exists := c.Get("uid"); exists {
-		if uid, ok := val.(string); ok && uid != "" {
-			_ = h.loginService.Logout(c.Request.Context(), uid)
-		}
+	uid := c.GetString("uid")
+	if uid == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "ออกจากระบบสำเร็จ"})
+	if err := h.loginService.Logout(c.Request.Context(), uid); err != nil {
+		log.Printf("Firebase logout failed for user %s: %v", uid, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "logout failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "logout successful"})
 }
 
 type AdminHandler struct {
@@ -99,7 +105,7 @@ func NewAdminHandler(u AdminService) *AdminHandler {
 func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 	users, err := h.adminService.GetAllUsers()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve user data: " + err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, users)
@@ -108,7 +114,7 @@ func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 	uid := c.Param("uid")
 	if uid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "กรุณาระบุ uid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user ID is required"})
 		return
 	}
 
@@ -125,25 +131,25 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "อัปเดตบทบาทผู้ใช้สำเร็จ"})
+	c.JSON(http.StatusOK, gin.H{"message": "user role updated successfully"})
 }
 
 func (h *AdminHandler) GetProfile(c *gin.Context) {
 	val, exists := c.Get("uid")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
 	uid, ok := val.(string)
 	if !ok || uid == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
 	user, err := h.adminService.GetProfile(uid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve user data: " + err.Error()})
 		return
 	}
 
@@ -160,13 +166,13 @@ func (h *AdminHandler) GetProfile(c *gin.Context) {
 func (h *AdminHandler) UpdateProfile(c *gin.Context) {
 	val, exists := c.Get("uid")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
 	uid, ok := val.(string)
 	if !ok || uid == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "กรุณา login ก่อน"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
@@ -183,7 +189,7 @@ func (h *AdminHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":      "แก้ไขข้อมูลส่วนตัวสำเร็จ",
+		"message":      "profile updated successfully",
 		"firebase_uid": user.FirebaseUID,
 		"uid":          user.FirebaseUID,
 		"email":        user.Email,

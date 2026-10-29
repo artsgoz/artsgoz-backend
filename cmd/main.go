@@ -24,7 +24,7 @@ func main() {
 		log.Printf("Warning: failed to load local configuration: %v. Will rely on environment variables.", err)
 	}
 
-	// 2. Connect to Firebase (Auth only — user data is now stored in PostgreSQL)
+	// 2. Connect to Firebase Auth. User data is stored in PostgreSQL.
 	var opt option.ClientOption
 	if _, err := os.Stat("firebase-service-account.json"); err == nil {
 		opt = option.WithCredentialsFile("firebase-service-account.json")
@@ -73,7 +73,7 @@ func main() {
 	// 5. Initialize Gin Engine
 	app := gin.Default()
 
-	// 5.1 CORS — Allow Frontend (Next.js) to access the API
+	// 5.1 Allow the Next.js frontend to access the API through CORS.
 	app.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "http://localhost:3001")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")

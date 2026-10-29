@@ -107,7 +107,7 @@ func printVersion(m *migrate.Migrate) {
 		log.Fatalf("version: %v", err)
 	}
 	if dirty {
-		fmt.Printf("version: %d (DIRTY — last migration failed mid-way; use `force` after manual cleanup)\n", v)
+		fmt.Printf("version: %d (DIRTY - last migration failed midway; use `force` after manual cleanup)\n", v)
 		os.Exit(1)
 	}
 	fmt.Printf("version: %d\n", v)

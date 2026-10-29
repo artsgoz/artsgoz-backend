@@ -29,13 +29,13 @@ func RegisterRoutes(
 	router *gin.RouterGroup,
 	authHandler *AuthHandler,
 	adminHandler *AdminHandler,
-	firebaseAuth *auth.Client,
+	firebaseAuth FirebaseAuthClient,
 	db *gorm.DB,
 ) {
 	// 1. Auth routes
 	authGroup := router.Group("/auth")
 	authGroup.POST("/login", authHandler.Login)
-	authGroup.POST("/logout", authHandler.Logout)
+	authGroup.POST("/logout", AuthMiddleware(firebaseAuth), authHandler.Logout)
 
 	// Keep existing root-level auth endpoints for backward compatibility
 	router.POST("/register", authHandler.Register)
