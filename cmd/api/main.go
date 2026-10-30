@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,13 +11,36 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/artsgoz/artsgoz-backend/internal/activity"
 	"github.com/artsgoz/artsgoz-backend/internal/article"
+	"github.com/artsgoz/artsgoz-backend/internal/comment"
+	"github.com/artsgoz/artsgoz-backend/internal/dashboard"
 	"github.com/artsgoz/artsgoz-backend/internal/media"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
 	"github.com/artsgoz/artsgoz-backend/internal/server"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
+
+type articleActivityAdapter struct {
+	activitySvc *activity.Service
+}
+
+func (a *articleActivityAdapter) LogPublish(ctx context.Context, actorID, actorName, articleID, articleTitle, detail string) {
+	if actorName == "" {
+		actorName = "ผู้เขียน"
+	}
+	action := fmt.Sprintf("%s เผยแพร่บทความใหม่ %s", actorName, articleTitle)
+	_, _ = a.activitySvc.Log(ctx, activity.LogInput{
+		Type:         activity.TypePublish,
+		Action:       action,
+		Detail:       detail,
+		ArticleID:    articleID,
+		ArticleTitle: articleTitle,
+		ActorID:      actorID,
+		ActorName:    actorName,
+	})
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -52,7 +76,13 @@ func run() error {
 	}()
 
 	// Auto-migrate tables
-	if err := database.DB.AutoMigrate(&user.User{}, &article.Article{}); err != nil {
+	if err := database.DB.AutoMigrate(
+		&user.User{},
+		&article.Article{},
+		&comment.Comment{},
+		&activity.ActivityLog{},
+		&dashboard.TrafficRecord{},
+	); err != nil {
 		log.Printf("warning: auto-migrate: %v", err)
 	}
 
@@ -72,12 +102,34 @@ func run() error {
 	user.RegisterRoutes(api, userHandler)
 	user.RegisterRoutes(apiV1, userHandler)
 
+	// Activity module
+	activityRepository := activity.NewGormRepository(database.DB)
+	activityService := activity.NewService(activityRepository)
+	activityHandler := activity.NewHandler(activityService)
+	activity.RegisterRoutes(api, activityHandler)
+	activity.RegisterRoutes(apiV1, activityHandler)
+
 	// Article module
 	articleRepository := article.NewGormRepository(database.DB)
 	articleService := article.NewService(articleRepository)
+	articleService.SetActivityLogger(&articleActivityAdapter{activitySvc: activityService})
 	articleHandler := article.NewHandler(articleService)
 	article.RegisterRoutes(api, articleHandler)
 	article.RegisterRoutes(apiV1, articleHandler)
+
+	// Comment module
+	commentRepository := comment.NewGormRepository(database.DB)
+	commentService := comment.NewService(commentRepository, activityService)
+	commentHandler := comment.NewHandler(commentService)
+	comment.RegisterRoutes(api, commentHandler)
+	comment.RegisterRoutes(apiV1, commentHandler)
+
+	// Dashboard module
+	dashboardRepository := dashboard.NewGormRepository(database.DB)
+	dashboardService := dashboard.NewService(dashboardRepository, commentRepository, activityService)
+	dashboardHandler := dashboard.NewHandler(dashboardService)
+	dashboard.RegisterRoutes(api, dashboardHandler)
+	dashboard.RegisterRoutes(apiV1, dashboardHandler)
 
 	// Media module
 	var storageProvider media.StorageProvider = media.NewLocalStorageProvider(cfg.UploadDir, cfg.UploadBaseURL)

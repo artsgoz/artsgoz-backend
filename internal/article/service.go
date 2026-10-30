@@ -67,8 +67,17 @@ type UpdateArticleInput struct {
 	References         []string    `json:"references"`
 }
 
+type ActivityLogger interface {
+	LogPublish(ctx context.Context, actorID, actorName, articleID, articleTitle, detail string)
+}
+
 type Service struct {
-	repository Repository
+	repository     Repository
+	activityLogger ActivityLogger
+}
+
+func (s *Service) SetActivityLogger(logger ActivityLogger) {
+	s.activityLogger = logger
 }
 
 func NewService(repository Repository) *Service {
@@ -190,6 +199,10 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		return nil, err
 	}
 
+	if s.activityLogger != nil && item.Status == StatusPublished {
+		s.activityLogger.LogPublish(ctx, item.AuthorID, item.AuthorName, item.ID, item.Title, item.Excerpt)
+	}
+
 	return item, nil
 }
 
@@ -212,6 +225,7 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInpu
 	if err != nil {
 		return nil, err
 	}
+	oldStatus := item.Status
 
 	if input.Title != nil {
 		title := strings.TrimSpace(*input.Title)
@@ -336,6 +350,10 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInpu
 		return nil, err
 	}
 
+	if s.activityLogger != nil && item.Status == StatusPublished && oldStatus != StatusPublished {
+		s.activityLogger.LogPublish(ctx, item.AuthorID, item.AuthorName, item.ID, item.Title, item.Excerpt)
+	}
+
 	return item, nil
 }
 
@@ -352,7 +370,14 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, rawStatus string)
 		publishedAt = &now
 	}
 
-	return s.repository.UpdateStatus(ctx, id, newStatus, publishedAt)
+	updated, err := s.repository.UpdateStatus(ctx, id, newStatus, publishedAt)
+	if err != nil {
+		return nil, err
+	}
+	if s.activityLogger != nil && newStatus == StatusPublished && item.Status != StatusPublished {
+		s.activityLogger.LogPublish(ctx, updated.AuthorID, updated.AuthorName, updated.ID, updated.Title, updated.Excerpt)
+	}
+	return updated, nil
 }
 
 func (s *Service) Delete(ctx context.Context, id string, hard bool) error {
