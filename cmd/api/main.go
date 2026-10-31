@@ -52,7 +52,7 @@ func run() error {
 	}()
 
 	// Auto-migrate tables
-	if err := database.DB.AutoMigrate(&user.User{}, &article.Article{}); err != nil {
+	if err := database.DB.AutoMigrate(&user.User{}, &article.Article{}, &article.Category{}, &article.ActivityLog{}); err != nil {
 		log.Printf("warning: auto-migrate: %v", err)
 	}
 

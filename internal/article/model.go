@@ -14,6 +14,7 @@ const (
 	StatusDraft     Status = "draft"
 	StatusPublished Status = "published"
 	StatusPending   Status = "pending"
+	StatusArchived  Status = "archived"
 
 	VisibilityPublic  Visibility = "public"
 	VisibilityPrivate Visibility = "private"
@@ -24,10 +25,48 @@ const (
 	StatusDraftThai     = "ร่างบทความ"
 	StatusPublishedThai = "เผยแพร่แล้ว"
 	StatusPendingThai   = "รออนุมัติ"
+	StatusArchivedThai  = "เก็บถาวร"
 
 	VisibilityPublicThai  = "สาธารณะ"
 	VisibilityPrivateThai = "ส่วนตัว"
 )
+
+type UserContext struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"` // Writer, Editor, SuperAdmin
+}
+
+type Category struct {
+	ID           string    `gorm:"type:uuid;primaryKey" json:"id"`
+	Name         string    `gorm:"type:varchar(100);not null;uniqueIndex" json:"name"`
+	Slug         string    `gorm:"type:varchar(100);not null;uniqueIndex" json:"slug"`
+	Description  string    `gorm:"type:text" json:"description,omitempty"`
+	Color        string    `gorm:"type:varchar(50)" json:"color,omitempty"`
+	Order        int       `gorm:"column:sort_order;default:0" json:"order"`
+	ArticleCount int64     `gorm:"-" json:"article_count"`
+	CreatedAt    time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt    time.Time `gorm:"not null" json:"updated_at"`
+}
+
+func (Category) TableName() string {
+	return "categories"
+}
+
+type ActivityLog struct {
+	ID        string    `gorm:"type:uuid;primaryKey" json:"id"`
+	ArticleID string    `gorm:"type:uuid;index;not null" json:"article_id"`
+	UserID    string    `gorm:"type:varchar(255)" json:"user_id"`
+	UserName  string    `gorm:"type:varchar(255)" json:"user_name"`
+	UserRole  string    `gorm:"type:varchar(50)" json:"user_role"`
+	Action    string    `gorm:"type:varchar(50);not null" json:"action"` // CREATE, UPDATE, PUBLISH, ARCHIVE, STATUS_CHANGE, DELETE
+	Details   string    `gorm:"type:text" json:"details,omitempty"`
+	CreatedAt time.Time `gorm:"not null" json:"created_at"`
+}
+
+func (ActivityLog) TableName() string {
+	return "article_activity_logs"
+}
 
 type Article struct {
 	ID                 string         `gorm:"type:uuid;primaryKey" json:"id"`
@@ -73,6 +112,8 @@ func (a *Article) PopulateLabels() {
 		a.StatusLabel = StatusPublishedThai
 	case StatusPending:
 		a.StatusLabel = StatusPendingThai
+	case StatusArchived:
+		a.StatusLabel = StatusArchivedThai
 	default:
 		a.Status = StatusDraft
 		a.StatusLabel = StatusDraftThai
@@ -128,6 +169,8 @@ func ParseStatus(s string) Status {
 		return StatusPublished
 	case "pending", "รออนุมัติ":
 		return StatusPending
+	case "archived", "เก็บถาวร":
+		return StatusArchived
 	default:
 		return StatusDraft
 	}

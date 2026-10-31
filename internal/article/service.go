@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	ErrInvalidTitle   = errors.New("title is required and cannot exceed 500 characters")
-	ErrInvalidContent = errors.New("content is required")
-	ErrInvalidSlug    = errors.New("slug contains invalid characters")
+	ErrInvalidTitle        = errors.New("title is required and cannot exceed 500 characters")
+	ErrInvalidContent      = errors.New("content is required")
+	ErrInvalidSlug         = errors.New("slug contains invalid characters")
+	ErrInvalidCategoryName = errors.New("category name is required and cannot exceed 100 characters")
+	ErrForbidden           = errors.New("forbidden: insufficient permissions")
 )
 
 type CreateArticleInput struct {
@@ -40,6 +42,7 @@ type CreateArticleInput struct {
 	MetaDescription    string      `json:"meta_description"`
 	SEOMetaDescription string      `json:"seo_meta_description"`
 	References         []string    `json:"references"`
+	User               UserContext `json:"-"`
 }
 
 type UpdateArticleInput struct {
@@ -65,6 +68,23 @@ type UpdateArticleInput struct {
 	MetaDescription    *string     `json:"meta_description"`
 	SEOMetaDescription *string     `json:"seo_meta_description"`
 	References         []string    `json:"references"`
+	User               UserContext `json:"-"`
+}
+
+type CreateCategoryInput struct {
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+	Color       string `json:"color"`
+	Order       int    `json:"order"`
+}
+
+type UpdateCategoryInput struct {
+	Name        *string `json:"name"`
+	Slug        *string `json:"slug"`
+	Description *string `json:"description"`
+	Color       *string `json:"color"`
+	Order       *int    `json:"order"`
 }
 
 type Service struct {
@@ -112,10 +132,16 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 
 	// Resolve status & visibility
 	statusStr := input.Status
-	if statusStr == "" && (input.Visibility == "draft" || input.Visibility == "published" || input.Visibility == "เผยแพร่" || input.Visibility == "เผยแพร่แล้ว" || input.Visibility == "ร่างบทความ") {
+	if statusStr == "" && (input.Visibility == "draft" || input.Visibility == "published" || input.Visibility == "เผยแพร่" || input.Visibility == "เผยแพร่แล้ว" || input.Visibility == "ร่างบทความ" || input.Visibility == "archived" || input.Visibility == "เก็บถาวร") {
 		statusStr = input.Visibility
 	}
 	status := ParseStatus(statusStr)
+
+	// OWASP BOPLA Protection: Writer role can only create draft articles
+	if strings.EqualFold(input.User.Role, "Writer") {
+		status = StatusDraft
+	}
+
 	visibility := ParseVisibility(input.Visibility)
 
 	// Resolve published date
@@ -158,6 +184,16 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		metaDesc = strings.TrimSpace(input.SEOMetaDescription)
 	}
 
+	// Resolve author info
+	authorID := strings.TrimSpace(input.AuthorID)
+	if authorID == "" && input.User.ID != "" {
+		authorID = input.User.ID
+	}
+	authorName := strings.TrimSpace(input.AuthorName)
+	if authorName == "" && input.User.Name != "" {
+		authorName = input.User.Name
+	}
+
 	item := &Article{
 		ID:                 uuid.NewString(),
 		Slug:               uniqueSlug,
@@ -167,8 +203,8 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		Content:            content,
 		CoverImageURL:      coverImage,
 		ImageURL:           coverImage,
-		AuthorID:           strings.TrimSpace(input.AuthorID),
-		AuthorName:         strings.TrimSpace(input.AuthorName),
+		AuthorID:           authorID,
+		AuthorName:         authorName,
 		Category:           category,
 		Categories:         categories,
 		CategoryIDs:        categories,
@@ -189,6 +225,18 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 	if err := s.repository.Create(ctx, item); err != nil {
 		return nil, err
 	}
+
+	// Record activity log
+	_ = s.repository.CreateActivityLog(ctx, &ActivityLog{
+		ID:        uuid.NewString(),
+		ArticleID: item.ID,
+		UserID:    input.User.ID,
+		UserName:  input.User.Name,
+		UserRole:  input.User.Role,
+		Action:    "CREATE",
+		Details:   fmt.Sprintf("Article created: %s", item.Title),
+		CreatedAt: now,
+	})
 
 	return item, nil
 }
@@ -211,6 +259,15 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInpu
 	item, err := s.repository.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	// OWASP BOLA / IDOR Protection: Writer can only update their own article
+	if strings.EqualFold(input.User.Role, "Writer") {
+		if item.AuthorID != "" && input.User.ID != "" && item.AuthorID != input.User.ID {
+			return nil, ErrForbidden
+		}
+		// Writer cannot change status directly via PUT
+		input.Status = nil
 	}
 
 	if input.Title != nil {
@@ -336,10 +393,32 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInpu
 		return nil, err
 	}
 
+	// Record activity log
+	_ = s.repository.CreateActivityLog(ctx, &ActivityLog{
+		ID:        uuid.NewString(),
+		ArticleID: item.ID,
+		UserID:    input.User.ID,
+		UserName:  input.User.Name,
+		UserRole:  input.User.Role,
+		Action:    "UPDATE",
+		Details:   fmt.Sprintf("Article updated: %s", item.Title),
+		CreatedAt: time.Now().UTC(),
+	})
+
 	return item, nil
 }
 
-func (s *Service) UpdateStatus(ctx context.Context, id string, rawStatus string) (*Article, error) {
+func (s *Service) UpdateStatus(ctx context.Context, id string, rawStatus string, user ...UserContext) (*Article, error) {
+	var u UserContext
+	if len(user) > 0 {
+		u = user[0]
+	}
+
+	// OWASP BFLA Protection: Writer cannot change status directly
+	if strings.EqualFold(u.Role, "Writer") {
+		return nil, ErrForbidden
+	}
+
 	item, err := s.repository.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -352,10 +431,54 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, rawStatus string)
 		publishedAt = &now
 	}
 
-	return s.repository.UpdateStatus(ctx, id, newStatus, publishedAt)
+	updated, err := s.repository.UpdateStatus(ctx, id, newStatus, publishedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Record activity log
+	action := "STATUS_CHANGE"
+	if newStatus == StatusPublished {
+		action = "PUBLISH"
+	} else if newStatus == StatusArchived {
+		action = "ARCHIVE"
+	}
+	_ = s.repository.CreateActivityLog(ctx, &ActivityLog{
+		ID:        uuid.NewString(),
+		ArticleID: id,
+		UserID:    u.ID,
+		UserName:  u.Name,
+		UserRole:  u.Role,
+		Action:    action,
+		Details:   fmt.Sprintf("Status changed to: %s", newStatus),
+		CreatedAt: time.Now().UTC(),
+	})
+
+	return updated, nil
 }
 
-func (s *Service) Delete(ctx context.Context, id string, hard bool) error {
+func (s *Service) Delete(ctx context.Context, id string, hard bool, user ...UserContext) error {
+	var u UserContext
+	if len(user) > 0 {
+		u = user[0]
+	}
+
+	// OWASP BFLA: SuperAdmin Only can delete
+	if u.Role != "" && !strings.EqualFold(u.Role, "SuperAdmin") && !strings.EqualFold(u.Role, "Admin") {
+		return ErrForbidden
+	}
+
+	_ = s.repository.CreateActivityLog(ctx, &ActivityLog{
+		ID:        uuid.NewString(),
+		ArticleID: id,
+		UserID:    u.ID,
+		UserName:  u.Name,
+		UserRole:  u.Role,
+		Action:    "DELETE",
+		Details:   fmt.Sprintf("Article deleted (permanent=%v)", hard),
+		CreatedAt: time.Now().UTC(),
+	})
+
 	return s.repository.Delete(ctx, id, hard)
 }
 
@@ -392,6 +515,142 @@ func (s *Service) List(ctx context.Context, params ListParams) (*ListResult, err
 
 func (s *Service) IncrementViews(ctx context.Context, id string) error {
 	return s.repository.IncrementViews(ctx, id)
+}
+
+func (s *Service) ListActivityLogs(ctx context.Context, articleID string) ([]ActivityLog, error) {
+	clean := strings.TrimSpace(articleID)
+	if clean == "" {
+		return []ActivityLog{}, nil
+	}
+	return s.repository.ListActivityLogs(ctx, clean)
+}
+
+// Category Services
+
+func (s *Service) CreateCategory(ctx context.Context, input CreateCategoryInput) (*Category, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" || len([]rune(name)) > 100 {
+		return nil, ErrInvalidCategoryName
+	}
+
+	slug := strings.TrimSpace(input.Slug)
+	if slug == "" {
+		slug = Slugify(name)
+	} else {
+		slug = Slugify(slug)
+	}
+
+	uniqueSlug, err := s.ensureUniqueCategorySlug(ctx, slug, "")
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	cat := &Category{
+		ID:          uuid.NewString(),
+		Name:        name,
+		Slug:        uniqueSlug,
+		Description: strings.TrimSpace(input.Description),
+		Color:       strings.TrimSpace(input.Color),
+		Order:       input.Order,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	if err := s.repository.CreateCategory(ctx, cat); err != nil {
+		return nil, err
+	}
+	return cat, nil
+}
+
+func (s *Service) GetCategory(ctx context.Context, idOrSlug string) (*Category, error) {
+	clean := strings.TrimSpace(idOrSlug)
+	if clean == "" {
+		return nil, ErrCategoryNotFound
+	}
+	cat, err := s.repository.GetCategoryByID(ctx, clean)
+	if err == nil {
+		return cat, nil
+	}
+	return s.repository.GetCategoryBySlug(ctx, clean)
+}
+
+func (s *Service) UpdateCategory(ctx context.Context, id string, input UpdateCategoryInput) (*Category, error) {
+	cat, err := s.repository.GetCategoryByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if input.Name != nil {
+		name := strings.TrimSpace(*input.Name)
+		if name == "" || len([]rune(name)) > 100 {
+			return nil, ErrInvalidCategoryName
+		}
+		cat.Name = name
+	}
+
+	if input.Slug != nil {
+		newSlug := Slugify(*input.Slug)
+		if newSlug != cat.Slug {
+			uniqueSlug, err := s.ensureUniqueCategorySlug(ctx, newSlug, cat.ID)
+			if err != nil {
+				return nil, err
+			}
+			cat.Slug = uniqueSlug
+		}
+	}
+
+	if input.Description != nil {
+		cat.Description = strings.TrimSpace(*input.Description)
+	}
+	if input.Color != nil {
+		cat.Color = strings.TrimSpace(*input.Color)
+	}
+	if input.Order != nil {
+		cat.Order = *input.Order
+	}
+	cat.UpdatedAt = time.Now().UTC()
+
+	if err := s.repository.UpdateCategory(ctx, cat); err != nil {
+		return nil, err
+	}
+	return cat, nil
+}
+
+func (s *Service) DeleteCategory(ctx context.Context, id string) error {
+	return s.repository.DeleteCategory(ctx, id)
+}
+
+func (s *Service) ListCategories(ctx context.Context) ([]Category, error) {
+	return s.repository.ListCategories(ctx)
+}
+
+func (s *Service) ensureUniqueCategorySlug(ctx context.Context, baseSlug string, excludeID string) (string, error) {
+	slug := baseSlug
+	if slug == "" {
+		slug = "category"
+	}
+
+	exists, err := s.repository.CategorySlugExists(ctx, slug, excludeID)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return slug, nil
+	}
+
+	for i := 1; i <= 100; i++ {
+		candidate := fmt.Sprintf("%s-%d", slug, i)
+		exists, err := s.repository.CategorySlugExists(ctx, candidate, excludeID)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return candidate, nil
+		}
+	}
+
+	return fmt.Sprintf("%s-%d", slug, time.Now().UnixNano()), nil
 }
 
 func (s *Service) ensureUniqueSlug(ctx context.Context, baseSlug string, excludeID string) (string, error) {
@@ -479,7 +738,7 @@ func ParsePublishDate(val interface{}) *time.Time {
 		}
 
 		// Handle Thai Buddhist Era year (BE >= 2500, e.g. "01/01/2569 , 10:30 AM")
-		re := regexp.MustCompile(`(25\d{2})`)
+		re := regexp.MustCompile(` (25\d{2}) `)
 		if match := re.FindStringSubmatch(s); len(match) > 1 {
 			var beYear int
 			fmt.Sscanf(match[1], "%d", &beYear)

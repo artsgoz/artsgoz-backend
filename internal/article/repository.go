@@ -12,14 +12,17 @@ import (
 )
 
 var (
-	ErrArticleNotFound = errors.New("article not found")
-	ErrSlugConflict    = errors.New("article slug already in use")
+	ErrArticleNotFound  = errors.New("article not found")
+	ErrSlugConflict     = errors.New("article slug already in use")
+	ErrCategoryNotFound = errors.New("category not found")
+	ErrCategoryConflict = errors.New("category name or slug already in use")
 )
 
 type ListParams struct {
 	Search         string
 	Status         string
 	Category       string
+	CategoryID     string
 	Author         string
 	SortBy         string // title, published_at, date, views, created_at
 	Order          string // asc, desc
@@ -46,6 +49,19 @@ type Repository interface {
 	List(ctx context.Context, params ListParams) (*ListResult, error)
 	IncrementViews(ctx context.Context, id string) error
 	SlugExists(ctx context.Context, slug string, excludeID string) (bool, error)
+
+	// Categories
+	CreateCategory(ctx context.Context, cat *Category) error
+	GetCategoryByID(ctx context.Context, id string) (*Category, error)
+	GetCategoryBySlug(ctx context.Context, slug string) (*Category, error)
+	UpdateCategory(ctx context.Context, cat *Category) error
+	DeleteCategory(ctx context.Context, id string) error
+	ListCategories(ctx context.Context) ([]Category, error)
+	CategorySlugExists(ctx context.Context, slug string, excludeID string) (bool, error)
+
+	// Activity Logs
+	CreateActivityLog(ctx context.Context, log *ActivityLog) error
+	ListActivityLogs(ctx context.Context, articleID string) ([]ActivityLog, error)
 }
 
 type GormRepository struct {
@@ -175,9 +191,16 @@ func (r *GormRepository) List(ctx context.Context, params ListParams) (*ListResu
 		}
 	}
 
-	// 3. Category filter
-	if cat := strings.TrimSpace(params.Category); cat != "" && cat != "ทั้งหมด" && strings.ToLower(cat) != "all" {
-		query = query.Where("category = ? OR category ILIKE ?", cat, "%"+cat+"%")
+	// 3. Category filter (supports name or category_id)
+	cat := strings.TrimSpace(params.CategoryID)
+	if cat == "" {
+		cat = strings.TrimSpace(params.Category)
+	}
+	if cat != "" && cat != "ทั้งหมด" && strings.ToLower(cat) != "all" {
+		query = query.Where(
+			"category = ? OR category ILIKE ? OR categories LIKE ? OR category_ids LIKE ?",
+			cat, "%"+cat+"%", "%\""+cat+"\"%", "%\""+cat+"\"%",
+		)
 	}
 
 	// 4. Author filter
@@ -250,9 +273,146 @@ func (r *GormRepository) SlugExists(ctx context.Context, slug string, excludeID 
 	return count > 0, nil
 }
 
+// Category methods
+
+func (r *GormRepository) CreateCategory(ctx context.Context, cat *Category) error {
+	if cat == nil {
+		return errors.New("category is nil")
+	}
+	err := r.db.WithContext(ctx).Create(cat).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return ErrCategoryConflict
+		}
+		return fmt.Errorf("create category: %w", err)
+	}
+	return nil
+}
+
+func (r *GormRepository) GetCategoryByID(ctx context.Context, id string) (*Category, error) {
+	var cat Category
+	err := r.db.WithContext(ctx).First(&cat, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrCategoryNotFound
+		}
+		return nil, fmt.Errorf("get category by id: %w", err)
+	}
+	return &cat, nil
+}
+
+func (r *GormRepository) GetCategoryBySlug(ctx context.Context, slug string) (*Category, error) {
+	var cat Category
+	err := r.db.WithContext(ctx).First(&cat, "slug = ?", slug).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrCategoryNotFound
+		}
+		return nil, fmt.Errorf("get category by slug: %w", err)
+	}
+	return &cat, nil
+}
+
+func (r *GormRepository) UpdateCategory(ctx context.Context, cat *Category) error {
+	if cat == nil {
+		return errors.New("category is nil")
+	}
+	err := r.db.WithContext(ctx).Save(cat).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return ErrCategoryConflict
+		}
+		return fmt.Errorf("update category: %w", err)
+	}
+	return nil
+}
+
+func (r *GormRepository) DeleteCategory(ctx context.Context, id string) error {
+	res := r.db.WithContext(ctx).Delete(&Category{}, "id = ?", id)
+	if res.Error != nil {
+		return fmt.Errorf("delete category: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrCategoryNotFound
+	}
+	return nil
+}
+
+func (r *GormRepository) ListCategories(ctx context.Context) ([]Category, error) {
+	var items []Category
+	if err := r.db.WithContext(ctx).Order("sort_order ASC, name ASC").Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("list categories: %w", err)
+	}
+
+	// Calculate article counts per category
+	type catCount struct {
+		Category string
+		Count    int64
+	}
+	var counts []catCount
+	_ = r.db.WithContext(ctx).Model(&Article{}).
+		Select("category, count(*) as count").
+		Where("deleted_at IS NULL").
+		Group("category").
+		Scan(&counts).Error
+
+	countMap := make(map[string]int64, len(counts))
+	for _, c := range counts {
+		countMap[strings.ToLower(strings.TrimSpace(c.Category))] = c.Count
+	}
+
+	for i := range items {
+		keyName := strings.ToLower(strings.TrimSpace(items[i].Name))
+		keySlug := strings.ToLower(strings.TrimSpace(items[i].Slug))
+		keyID := strings.ToLower(strings.TrimSpace(items[i].ID))
+		if count, ok := countMap[keyName]; ok {
+			items[i].ArticleCount += count
+		} else if count, ok := countMap[keySlug]; ok {
+			items[i].ArticleCount += count
+		} else if count, ok := countMap[keyID]; ok {
+			items[i].ArticleCount += count
+		}
+	}
+
+	return items, nil
+}
+
+func (r *GormRepository) CategorySlugExists(ctx context.Context, slug string, excludeID string) (bool, error) {
+	var count int64
+	q := r.db.WithContext(ctx).Model(&Category{}).Where("slug = ?", slug)
+	if excludeID != "" {
+		q = q.Where("id != ?", excludeID)
+	}
+	if err := q.Count(&count).Error; err != nil {
+		return false, fmt.Errorf("check category slug exists: %w", err)
+	}
+	return count > 0, nil
+}
+
+// Activity Log methods
+
+func (r *GormRepository) CreateActivityLog(ctx context.Context, log *ActivityLog) error {
+	if log == nil {
+		return errors.New("activity log is nil")
+	}
+	return r.db.WithContext(ctx).Create(log).Error
+}
+
+func (r *GormRepository) ListActivityLogs(ctx context.Context, articleID string) ([]ActivityLog, error) {
+	var logs []ActivityLog
+	err := r.db.WithContext(ctx).
+		Where("article_id = ?", articleID).
+		Order("created_at DESC").
+		Find(&logs).Error
+	if err != nil {
+		return nil, fmt.Errorf("list activity logs: %w", err)
+	}
+	return logs, nil
+}
+
 func buildSortClause(sortBy, order string) string {
 	direction := "DESC"
-	if strings.ToLower(order) == "asc" {
+	if strings.ToLower(strings.TrimSpace(order)) == "asc" {
 		direction = "ASC"
 	}
 

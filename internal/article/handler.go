@@ -2,8 +2,10 @@ package article
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +17,26 @@ type Handler struct {
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
+}
+
+func getUserContext(c *gin.Context) UserContext {
+	id := c.GetString("user_id")
+	if id == "" {
+		id = c.GetHeader("X-User-ID")
+	}
+	role := c.GetString("user_role")
+	if role == "" {
+		role = c.GetHeader("X-User-Role")
+	}
+	name := c.GetString("user_name")
+	if name == "" {
+		name = c.GetHeader("X-User-Name")
+	}
+	return UserContext{
+		ID:   strings.TrimSpace(id),
+		Name: strings.TrimSpace(name),
+		Role: strings.TrimSpace(role),
+	}
 }
 
 type createArticleRequest struct {
@@ -71,13 +93,31 @@ type updateStatusRequest struct {
 	Status string `json:"status" binding:"required"`
 }
 
-// Create handles POST /api/articles
+type createCategoryRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+	Color       string `json:"color"`
+	Order       int    `json:"order"`
+}
+
+type updateCategoryRequest struct {
+	Name        *string `json:"name"`
+	Slug        *string `json:"slug"`
+	Description *string `json:"description"`
+	Color       *string `json:"color"`
+	Order       *int    `json:"order"`
+}
+
+// Create handles POST /api/articles and POST /api/v1/admin/articles
 func (h *Handler) Create(c *gin.Context) {
 	var req createArticleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+
+	userCtx := getUserContext(c)
 
 	item, err := h.service.Create(c.Request.Context(), CreateArticleInput{
 		Title:              req.Title,
@@ -102,6 +142,7 @@ func (h *Handler) Create(c *gin.Context) {
 		MetaDescription:    req.MetaDescription,
 		SEOMetaDescription: req.SEOMetaDescription,
 		References:         req.References,
+		User:               userCtx,
 	})
 	if err != nil {
 		switch {
@@ -109,16 +150,19 @@ func (h *Handler) Create(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "validation", err.Error())
 		case errors.Is(err, ErrSlugConflict):
 			writeError(c, http.StatusConflict, "conflict", err.Error())
+		case errors.Is(err, ErrForbidden):
+			writeError(c, http.StatusForbidden, "forbidden", err.Error())
 		default:
 			_ = c.Error(err)
 		}
 		return
 	}
 
+	c.Header("Location", fmt.Sprintf("/api/v1/admin/articles/%s", item.ID))
 	c.JSON(http.StatusCreated, item)
 }
 
-// Get handles GET /api/articles/:id
+// Get handles GET /api/articles/:id and GET /api/v1/admin/articles/:id
 func (h *Handler) Get(c *gin.Context) {
 	idOrSlug := c.Param("id")
 	item, err := h.service.Get(c.Request.Context(), idOrSlug)
@@ -134,7 +178,7 @@ func (h *Handler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
-// Update handles PUT /api/articles/:id
+// Update handles PUT /api/articles/:id and PUT /api/v1/admin/articles/:id
 func (h *Handler) Update(c *gin.Context) {
 	id := c.Param("id")
 	var req updateArticleRequest
@@ -142,6 +186,8 @@ func (h *Handler) Update(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+
+	userCtx := getUserContext(c)
 
 	item, err := h.service.Update(c.Request.Context(), id, UpdateArticleInput{
 		Title:              req.Title,
@@ -166,6 +212,7 @@ func (h *Handler) Update(c *gin.Context) {
 		MetaDescription:    req.MetaDescription,
 		SEOMetaDescription: req.SEOMetaDescription,
 		References:         req.References,
+		User:               userCtx,
 	})
 	if err != nil {
 		switch {
@@ -175,6 +222,8 @@ func (h *Handler) Update(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "validation", err.Error())
 		case errors.Is(err, ErrSlugConflict):
 			writeError(c, http.StatusConflict, "conflict", err.Error())
+		case errors.Is(err, ErrForbidden):
+			writeError(c, http.StatusForbidden, "forbidden", err.Error())
 		default:
 			_ = c.Error(err)
 		}
@@ -184,7 +233,7 @@ func (h *Handler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
-// UpdateStatus handles PATCH /api/articles/:id/status
+// UpdateStatus handles PATCH /api/articles/:id/status and PATCH /api/v1/admin/articles/:id/status
 func (h *Handler) UpdateStatus(c *gin.Context) {
 	id := c.Param("id")
 	var req updateStatusRequest
@@ -193,30 +242,39 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	item, err := h.service.UpdateStatus(c.Request.Context(), id, req.Status)
+	userCtx := getUserContext(c)
+
+	item, err := h.service.UpdateStatus(c.Request.Context(), id, req.Status, userCtx)
 	if err != nil {
-		if errors.Is(err, ErrArticleNotFound) {
+		switch {
+		case errors.Is(err, ErrArticleNotFound):
 			writeError(c, http.StatusNotFound, "not_found", "article not found")
-			return
+		case errors.Is(err, ErrForbidden):
+			writeError(c, http.StatusForbidden, "forbidden", err.Error())
+		default:
+			_ = c.Error(err)
 		}
-		_ = c.Error(err)
 		return
 	}
 
 	c.JSON(http.StatusOK, item)
 }
 
-// Delete handles DELETE /api/articles/:id
+// Delete handles DELETE /api/articles/:id and DELETE /api/v1/admin/articles/:id
 func (h *Handler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	hard := c.Query("permanent") == "true" || c.Query("hard") == "true"
+	userCtx := getUserContext(c)
 
-	if err := h.service.Delete(c.Request.Context(), id, hard); err != nil {
-		if errors.Is(err, ErrArticleNotFound) {
+	if err := h.service.Delete(c.Request.Context(), id, hard, userCtx); err != nil {
+		switch {
+		case errors.Is(err, ErrArticleNotFound):
 			writeError(c, http.StatusNotFound, "not_found", "article not found")
-			return
+		case errors.Is(err, ErrForbidden):
+			writeError(c, http.StatusForbidden, "forbidden", err.Error())
+		default:
+			_ = c.Error(err)
 		}
-		_ = c.Error(err)
 		return
 	}
 
@@ -226,7 +284,7 @@ func (h *Handler) Delete(c *gin.Context) {
 	})
 }
 
-// List handles GET /api/articles
+// List handles GET /api/articles and GET /api/v1/admin/articles
 func (h *Handler) List(c *gin.Context) {
 	search := c.Query("search")
 	if search == "" {
@@ -245,6 +303,7 @@ func (h *Handler) List(c *gin.Context) {
 		Search:         search,
 		Status:         c.Query("status"),
 		Category:       c.Query("category"),
+		CategoryID:     c.Query("category_id"),
 		Author:         c.Query("author"),
 		SortBy:         sortBy,
 		Order:          order,
@@ -264,6 +323,7 @@ func (h *Handler) List(c *gin.Context) {
 		"meta": gin.H{
 			"page":        result.Page,
 			"page_size":   result.PageSize,
+			"limit":       result.PageSize,
 			"total_items": result.TotalItems,
 			"total_pages": result.TotalPages,
 		},
@@ -278,6 +338,131 @@ func (h *Handler) IncrementViews(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// ListActivityLogs handles GET /api/v1/admin/articles/:id/logs
+func (h *Handler) ListActivityLogs(c *gin.Context) {
+	id := c.Param("id")
+	logs, err := h.service.ListActivityLogs(c.Request.Context(), id)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"data": logs,
+	})
+}
+
+// Category handlers
+
+// CreateCategory handles POST /api/v1/admin/categories
+func (h *Handler) CreateCategory(c *gin.Context) {
+	var req createCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+
+	item, err := h.service.CreateCategory(c.Request.Context(), CreateCategoryInput{
+		Name:        req.Name,
+		Slug:        req.Slug,
+		Description: req.Description,
+		Color:       req.Color,
+		Order:       req.Order,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidCategoryName):
+			writeError(c, http.StatusBadRequest, "validation", err.Error())
+		case errors.Is(err, ErrCategoryConflict):
+			writeError(c, http.StatusConflict, "conflict", err.Error())
+		default:
+			_ = c.Error(err)
+		}
+		return
+	}
+
+	c.Header("Location", fmt.Sprintf("/api/v1/admin/categories/%s", item.ID))
+	c.JSON(http.StatusCreated, item)
+}
+
+// GetCategory handles GET /api/v1/admin/categories/:id and GET /api/categories/:id
+func (h *Handler) GetCategory(c *gin.Context) {
+	idOrSlug := c.Param("id")
+	item, err := h.service.GetCategory(c.Request.Context(), idOrSlug)
+	if err != nil {
+		if errors.Is(err, ErrCategoryNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "category not found")
+			return
+		}
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, item)
+}
+
+// UpdateCategory handles PUT /api/v1/admin/categories/:id
+func (h *Handler) UpdateCategory(c *gin.Context) {
+	id := c.Param("id")
+	var req updateCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+
+	item, err := h.service.UpdateCategory(c.Request.Context(), id, UpdateCategoryInput{
+		Name:        req.Name,
+		Slug:        req.Slug,
+		Description: req.Description,
+		Color:       req.Color,
+		Order:       req.Order,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrCategoryNotFound):
+			writeError(c, http.StatusNotFound, "not_found", "category not found")
+		case errors.Is(err, ErrInvalidCategoryName):
+			writeError(c, http.StatusBadRequest, "validation", err.Error())
+		case errors.Is(err, ErrCategoryConflict):
+			writeError(c, http.StatusConflict, "conflict", err.Error())
+		default:
+			_ = c.Error(err)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, item)
+}
+
+// DeleteCategory handles DELETE /api/v1/admin/categories/:id
+func (h *Handler) DeleteCategory(c *gin.Context) {
+	id := c.Param("id")
+	if err := h.service.DeleteCategory(c.Request.Context(), id); err != nil {
+		if errors.Is(err, ErrCategoryNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "category not found")
+			return
+		}
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "category deleted successfully",
+	})
+}
+
+// ListCategories handles GET /api/v1/admin/categories and GET /api/categories
+func (h *Handler) ListCategories(c *gin.Context) {
+	items, err := h.service.ListCategories(c.Request.Context())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": items,
+	})
 }
 
 func writeError(c *gin.Context, status int, code, message string) {
