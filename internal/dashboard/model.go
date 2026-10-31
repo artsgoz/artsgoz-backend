@@ -104,6 +104,52 @@ type CategoriesResponse struct {
 	TrendingArticles     []TrendingArticleItem  `json:"trending_articles"`
 }
 
+// ---------------------------------------------------------------------------
+// Admin Dashboard Analytics response types (spec-compliant)
+// ---------------------------------------------------------------------------
+
+// StatsResponse is the payload for GET /api/v1/admin/dashboard/stats
+// Returns 4 key metric cards: total views, published articles, pending comments, total categories.
+type StatsResponse struct {
+	TotalViews             int64   `json:"total_views"`
+	TotalViewsFormatted    string  `json:"total_views_formatted"`
+	TotalViewsGrowthRate   float64 `json:"total_views_growth_rate"`
+	PublishedArticlesCount int64   `json:"published_articles_count"`
+	PendingCommentsCount   int64   `json:"pending_comments_count"`
+	PendingCommentsGrowth  float64 `json:"pending_comments_growth_rate"`
+	TotalCategoriesCount   int     `json:"total_categories_count"`
+}
+
+// MonthlyTrendItem represents a single month data point for the trend chart.
+type MonthlyTrendItem struct {
+	Month  string `json:"month"`  // e.g. "JAN", "FEB", ... "DEC"
+	Visits int64  `json:"visits"` // total visits in that month
+}
+
+// MonthlyTrendsResponse is the payload for GET /api/v1/admin/dashboard/monthly-trends
+type MonthlyTrendsResponse struct {
+	Year    int                `json:"year"`
+	Months  []MonthlyTrendItem `json:"months"`
+}
+
+// TopArticlesResponse is the payload for GET /api/v1/admin/dashboard/top-articles
+type TopArticlesResponse struct {
+	Articles []TopArticleItem `json:"articles"`
+	Total    int              `json:"total"`
+}
+
+// TopCategoriesResponse is the payload for GET /api/v1/admin/dashboard/top-categories
+type TopCategoriesResponse struct {
+	TotalCategoriesCount int                    `json:"total_categories_count"`
+	Categories           []CategoryDistribution `json:"categories"`
+}
+
+// RecentActivitiesResponse is the payload for GET /api/v1/admin/dashboard/recent-activities
+type RecentActivitiesResponse struct {
+	Activities []activity.ActivityItem `json:"activities"`
+	Total      int                     `json:"total"`
+}
+
 // FormatViews formats an integer into a condensed readable string (e.g. 125400 -> "125.4k").
 func FormatViews(views int64) string {
 	if views >= 1_000_000 {
@@ -126,4 +172,3 @@ func CalculateGrowthRate(current, previous int64) float64 {
 	rate := (float64(current-previous) / float64(previous)) * 100.0
 	return float64(int(rate*10)) / 10.0 // 1 decimal place
 }
-

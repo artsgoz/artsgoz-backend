@@ -488,3 +488,181 @@ func (s *Service) ExportCSV(ctx context.Context) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ---------------------------------------------------------------------------
+// Admin Dashboard Analytics service methods (spec-compliant)
+// ---------------------------------------------------------------------------
+
+// GetStats returns the 4 key metric cards for GET /api/v1/admin/dashboard/stats:
+// total views, published articles count, pending comments count, total categories count.
+func (s *Service) GetStats(ctx context.Context) (*StatsResponse, error) {
+	now := time.Now().UTC()
+
+	// 1. Total views (cumulative)
+	totalViews, err := s.repo.GetTotalArticleViews(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total article views: %w", err)
+	}
+
+	// Growth rate: current month vs previous month traffic
+	startOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	startOfLastMonth := startOfThisMonth.AddDate(0, -1, 0)
+	currTraffic, _ := s.repo.GetTrafficCountBetween(ctx, startOfThisMonth, now)
+	prevTraffic, _ := s.repo.GetTrafficCountBetween(ctx, startOfLastMonth, startOfThisMonth)
+	viewsGrowthRate := CalculateGrowthRate(currTraffic, prevTraffic)
+
+	// 2. Published articles count
+	publishedCount, err := s.repo.GetPublishedArticlesCount(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get published articles count: %w", err)
+	}
+
+	// 3. Pending comments (new comments awaiting review)
+	var pendingCommentsCount int64
+	var pendingCommentsGrowth float64
+	if s.commentRepo != nil {
+		pendingCommentsCount, _ = s.commentRepo.CountSince(ctx, startOfThisMonth)
+		prevComments, _ := s.commentRepo.CountBetween(ctx, startOfLastMonth, startOfThisMonth)
+		pendingCommentsGrowth = CalculateGrowthRate(pendingCommentsCount, prevComments)
+	}
+
+	// 4. Total distinct categories
+	totalCategoriesCount, _ := s.repo.GetDistinctCategoryCount(ctx)
+
+	return &StatsResponse{
+		TotalViews:             totalViews,
+		TotalViewsFormatted:    FormatViews(totalViews),
+		TotalViewsGrowthRate:   viewsGrowthRate,
+		PublishedArticlesCount: publishedCount,
+		PendingCommentsCount:   pendingCommentsCount,
+		PendingCommentsGrowth:  pendingCommentsGrowth,
+		TotalCategoriesCount:   totalCategoriesCount,
+	}, nil
+}
+
+// GetMonthlyTrends returns 12-month visitor trends for a given year.
+// Used for Line / Bar Chart on TanStack Frontend.
+func (s *Service) GetMonthlyTrends(ctx context.Context, year int) (*MonthlyTrendsResponse, error) {
+	months, err := s.repo.GetMonthlyTrafficByYear(ctx, year)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monthly traffic for year %d: %w", year, err)
+	}
+
+	return &MonthlyTrendsResponse{
+		Year:   year,
+		Months: months,
+	}, nil
+}
+
+// GetTopArticlesList returns top articles by views with configurable limit.
+func (s *Service) GetTopArticlesList(ctx context.Context, limit int) (*TopArticlesResponse, error) {
+	rawArticles, err := s.repo.GetTopArticles(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get top articles: %w", err)
+	}
+
+	articles := make([]TopArticleItem, 0, len(rawArticles))
+	for _, a := range rawArticles {
+		pubStr := ""
+		if a.PublishedAt != nil {
+			pubStr = a.PublishedAt.Format("02/01/2006")
+		}
+		thumb := a.CoverImageURL
+		if thumb == "" {
+			thumb = a.ImageURL
+		}
+		articles = append(articles, TopArticleItem{
+			ID:          a.ID,
+			Title:       a.Title,
+			Subtitle:    fmt.Sprintf("หมวด: %s", a.Category),
+			Category:    a.Category,
+			Status:      a.StatusLabel,
+			Views:       a.ViewsCount,
+			Thumb:       thumb,
+			PublishedAt: pubStr,
+		})
+	}
+
+	return &TopArticlesResponse{
+		Articles: articles,
+		Total:    len(articles),
+	}, nil
+}
+
+// GetTopCategoriesDistribution returns category distribution data for Donut Chart.
+func (s *Service) GetTopCategoriesDistribution(ctx context.Context) (*TopCategoriesResponse, error) {
+	counts, err := s.repo.GetCategoryCounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get category counts: %w", err)
+	}
+
+	colorPalette := []struct{ bar, dot string }{
+		{"#CA5582", "#CA5582"},
+		{"#DE5D8F", "#DE5D8F"},
+		{"#E57DA5", "#E57DA5"},
+		{"#E992B4", "#E992B4"},
+		{"#F0B4CB", "#F0B4CB"},
+		{"#F5CDDC", "#F5CDDC"},
+		{"#FCEFF4", "#FCEFF4"},
+	}
+
+	var totalMetric int64
+	for _, c := range counts {
+		metric := c.Views
+		if metric == 0 {
+			metric = c.Count
+		}
+		totalMetric += metric
+	}
+
+	categories := make([]CategoryDistribution, 0, len(counts))
+	for i, c := range counts {
+		pct := 0
+		if totalMetric > 0 {
+			metric := c.Views
+			if metric == 0 {
+				metric = c.Count
+			}
+			pct = int((float64(metric) / float64(totalMetric)) * 100)
+		}
+		colors := colorPalette[i%len(colorPalette)]
+		categories = append(categories, CategoryDistribution{
+			Name:     c.Category,
+			Pct:      pct,
+			Count:    c.Count,
+			BarColor: colors.bar,
+			DotColor: colors.dot,
+		})
+	}
+
+	totalCategoriesCount, _ := s.repo.GetDistinctCategoryCount(ctx)
+
+	return &TopCategoriesResponse{
+		TotalCategoriesCount: totalCategoriesCount,
+		Categories:           categories,
+	}, nil
+}
+
+// GetRecentActivities returns the N most recent audit trail log entries.
+func (s *Service) GetRecentActivities(ctx context.Context, limit int) (*RecentActivitiesResponse, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var items []activity.ActivityItem
+	if s.activitySvc != nil {
+		result, err := s.activitySvc.List(ctx, 1, limit, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get recent activities: %w", err)
+		}
+		items = result.Items
+	}
+
+	if items == nil {
+		items = []activity.ActivityItem{}
+	}
+
+	return &RecentActivitiesResponse{
+		Activities: items,
+		Total:      len(items),
+	}, nil
+}

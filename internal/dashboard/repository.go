@@ -25,12 +25,14 @@ type Repository interface {
 	GetPublishedArticlesCount(ctx context.Context) (int64, error)
 	GetTopCategories(ctx context.Context, limit int) ([]string, error)
 	GetCategoryCounts(ctx context.Context) ([]CategoryCount, error)
+	GetDistinctCategoryCount(ctx context.Context) (int, error)
 	GetTopArticles(ctx context.Context, limit int) ([]article.Article, error)
 	GetPublishedArticlesForExport(ctx context.Context) ([]article.Article, error)
 	GetTrafficCountBetween(ctx context.Context, start, end time.Time) (int64, error)
 	GetTrafficCountBySourceBetween(ctx context.Context, start, end time.Time) ([]SourceCount, error)
 	GetDailyTraffic(ctx context.Context, start, end time.Time) (map[string]int64, error)
 	GetMonthlyTraffic(ctx context.Context, monthsBack int) ([]MonthlyData, error)
+	GetMonthlyTrafficByYear(ctx context.Context, year int) ([]MonthlyTrendItem, error)
 }
 
 type gormRepository struct {
@@ -88,6 +90,16 @@ func (r *gormRepository) GetCategoryCounts(ctx context.Context) ([]CategoryCount
 		Order("views DESC, count DESC").
 		Scan(&results).Error
 	return results, err
+}
+
+// GetDistinctCategoryCount returns the total number of distinct non-empty categories.
+func (r *gormRepository) GetDistinctCategoryCount(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&article.Article{}).
+		Where("category != '' AND category IS NOT NULL").
+		Distinct("category").
+		Count(&count).Error
+	return int(count), err
 }
 
 func (r *gormRepository) GetTopArticles(ctx context.Context, limit int) ([]article.Article, error) {
@@ -201,3 +213,25 @@ func (r *gormRepository) GetMonthlyTraffic(ctx context.Context, monthsBack int) 
 	return data, nil
 }
 
+// GetMonthlyTrafficByYear returns traffic data grouped by month for a specific year (12 months).
+func (r *gormRepository) GetMonthlyTrafficByYear(ctx context.Context, year int) ([]MonthlyTrendItem, error) {
+	monthNames := []string{"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"}
+
+	data := make([]MonthlyTrendItem, 12)
+	for m := 1; m <= 12; m++ {
+		startOfMonth := time.Date(year, time.Month(m), 1, 0, 0, 0, 0, time.UTC)
+		endOfMonth := startOfMonth.AddDate(0, 1, 0)
+
+		var count int64
+		_ = r.db.WithContext(ctx).Model(&TrafficRecord{}).
+			Where("created_at >= ? AND created_at < ?", startOfMonth, endOfMonth).
+			Count(&count).Error
+
+		data[m-1] = MonthlyTrendItem{
+			Month:  monthNames[m-1],
+			Visits: count,
+		}
+	}
+
+	return data, nil
+}

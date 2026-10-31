@@ -128,8 +128,29 @@ func run() error {
 	dashboardRepository := dashboard.NewGormRepository(database.DB)
 	dashboardService := dashboard.NewService(dashboardRepository, commentRepository, activityService)
 	dashboardHandler := dashboard.NewHandler(dashboardService)
+
+	// Legacy dashboard routes (backward compatibility)
 	dashboard.RegisterRoutes(api, dashboardHandler)
 	dashboard.RegisterRoutes(apiV1, dashboardHandler)
+
+	// Admin dashboard routes with authentication (spec-compliant)
+	// [GET] /api/v1/admin/dashboard/stats
+	// [GET] /api/v1/admin/dashboard/monthly-trends?year=2026
+	// [GET] /api/v1/admin/dashboard/top-articles?limit=5
+	// [GET] /api/v1/admin/dashboard/top-categories
+	// [GET] /api/v1/admin/dashboard/recent-activities
+	adminV1 := apiV1.Group("/admin",
+		server.AuthRequired(),
+		server.RequireRoles(server.RoleEditor, server.RoleSuperAdmin),
+	)
+	dashboard.RegisterAdminRoutes(adminV1, dashboardHandler)
+
+	// Also register on /api/admin for consistency
+	adminAPI := api.Group("/admin",
+		server.AuthRequired(),
+		server.RequireRoles(server.RoleEditor, server.RoleSuperAdmin),
+	)
+	dashboard.RegisterAdminRoutes(adminAPI, dashboardHandler)
 
 	// Media module
 	var storageProvider media.StorageProvider = media.NewLocalStorageProvider(cfg.UploadDir, cfg.UploadBaseURL)
