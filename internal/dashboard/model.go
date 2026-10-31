@@ -5,7 +5,44 @@ import (
 	"time"
 
 	"github.com/artsgoz/artsgoz-backend/internal/activity"
+	"gorm.io/gorm"
 )
+
+// ArticleSummary is a lightweight projection of the articles table for dashboard queries.
+// This allows the dashboard module to query article metrics without a direct dependency on the article package.
+type ArticleSummary struct {
+	ID            string         `gorm:"type:uuid;primaryKey" json:"id"`
+	Slug          string         `json:"slug"`
+	Title         string         `json:"title"`
+	CoverImageURL string         `gorm:"column:cover_image_url" json:"cover_image_url"`
+	ImageURL      string         `gorm:"column:image_url" json:"image_url,omitempty"`
+	AuthorName    string         `gorm:"column:author_name" json:"author_name,omitempty"`
+	Category      string         `json:"category"`
+	Status        string         `json:"status"`
+	StatusLabel   string         `gorm:"-" json:"status_label"`
+	PublishedAt   *time.Time     `json:"published_at"`
+	ViewsCount    int64          `gorm:"column:views_count" json:"views_count"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+}
+
+func (ArticleSummary) TableName() string {
+	return "articles"
+}
+
+func (a *ArticleSummary) AfterFind(_ *gorm.DB) error {
+	switch a.Status {
+	case "published":
+		a.StatusLabel = "เผยแพร่แล้ว"
+	case "pending":
+		a.StatusLabel = "รออนุมัติ"
+	default:
+		a.Status = "draft"
+		a.StatusLabel = "ร่างบทความ"
+	}
+	return nil
+}
 
 // TrafficRecord records page views and traffic source channels.
 type TrafficRecord struct {

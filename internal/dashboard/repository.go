@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/artsgoz/artsgoz-backend/internal/article"
 	"gorm.io/gorm"
 )
 
@@ -26,8 +25,8 @@ type Repository interface {
 	GetTopCategories(ctx context.Context, limit int) ([]string, error)
 	GetCategoryCounts(ctx context.Context) ([]CategoryCount, error)
 	GetDistinctCategoryCount(ctx context.Context) (int, error)
-	GetTopArticles(ctx context.Context, limit int) ([]article.Article, error)
-	GetPublishedArticlesForExport(ctx context.Context) ([]article.Article, error)
+	GetTopArticles(ctx context.Context, limit int) ([]ArticleSummary, error)
+	GetPublishedArticlesForExport(ctx context.Context) ([]ArticleSummary, error)
 	GetTrafficCountBetween(ctx context.Context, start, end time.Time) (int64, error)
 	GetTrafficCountBySourceBetween(ctx context.Context, start, end time.Time) ([]SourceCount, error)
 	GetDailyTraffic(ctx context.Context, start, end time.Time) (map[string]int64, error)
@@ -49,7 +48,7 @@ func (r *gormRepository) RecordTraffic(ctx context.Context, item *TrafficRecord)
 
 func (r *gormRepository) GetTotalArticleViews(ctx context.Context) (int64, error) {
 	var total *int64
-	err := r.db.WithContext(ctx).Model(&article.Article{}).
+	err := r.db.WithContext(ctx).Table("articles").
 		Select("COALESCE(SUM(views_count), 0)").
 		Scan(&total).Error
 	if err != nil || total == nil {
@@ -60,8 +59,8 @@ func (r *gormRepository) GetTotalArticleViews(ctx context.Context) (int64, error
 
 func (r *gormRepository) GetPublishedArticlesCount(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&article.Article{}).
-		Where("status = ?", article.StatusPublished).
+	err := r.db.WithContext(ctx).Table("articles").
+		Where("status = ?", "published").
 		Count(&count).Error
 	return count, err
 }
@@ -71,7 +70,7 @@ func (r *gormRepository) GetTopCategories(ctx context.Context, limit int) ([]str
 		limit = 3
 	}
 	var results []string
-	err := r.db.WithContext(ctx).Model(&article.Article{}).
+	err := r.db.WithContext(ctx).Table("articles").
 		Select("category").
 		Where("category != '' AND category IS NOT NULL").
 		Group("category").
@@ -83,7 +82,7 @@ func (r *gormRepository) GetTopCategories(ctx context.Context, limit int) ([]str
 
 func (r *gormRepository) GetCategoryCounts(ctx context.Context) ([]CategoryCount, error) {
 	var results []CategoryCount
-	err := r.db.WithContext(ctx).Model(&article.Article{}).
+	err := r.db.WithContext(ctx).Table("articles").
 		Select("category, COUNT(*) as count, COALESCE(SUM(views_count), 0) as views").
 		Where("category != '' AND category IS NOT NULL").
 		Group("category").
@@ -95,30 +94,30 @@ func (r *gormRepository) GetCategoryCounts(ctx context.Context) ([]CategoryCount
 // GetDistinctCategoryCount returns the total number of distinct non-empty categories.
 func (r *gormRepository) GetDistinctCategoryCount(ctx context.Context) (int, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&article.Article{}).
+	err := r.db.WithContext(ctx).Table("articles").
 		Where("category != '' AND category IS NOT NULL").
 		Distinct("category").
 		Count(&count).Error
 	return int(count), err
 }
 
-func (r *gormRepository) GetTopArticles(ctx context.Context, limit int) ([]article.Article, error) {
+func (r *gormRepository) GetTopArticles(ctx context.Context, limit int) ([]ArticleSummary, error) {
 	if limit <= 0 {
 		limit = 5
 	}
-	var articles []article.Article
+	var articles []ArticleSummary
 	err := r.db.WithContext(ctx).
-		Where("status = ?", article.StatusPublished).
+		Where("status = ?", "published").
 		Order("views_count DESC, created_at DESC").
 		Limit(limit).
 		Find(&articles).Error
 	return articles, err
 }
 
-func (r *gormRepository) GetPublishedArticlesForExport(ctx context.Context) ([]article.Article, error) {
-	var articles []article.Article
+func (r *gormRepository) GetPublishedArticlesForExport(ctx context.Context) ([]ArticleSummary, error) {
+	var articles []ArticleSummary
 	err := r.db.WithContext(ctx).
-		Where("status = ?", article.StatusPublished).
+		Where("status = ?", "published").
 		Order("published_at DESC, created_at DESC").
 		Find(&articles).Error
 	return articles, err

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,35 +11,13 @@ import (
 	"time"
 
 	"github.com/artsgoz/artsgoz-backend/internal/activity"
-	"github.com/artsgoz/artsgoz-backend/internal/article"
 	"github.com/artsgoz/artsgoz-backend/internal/comment"
 	"github.com/artsgoz/artsgoz-backend/internal/dashboard"
-	"github.com/artsgoz/artsgoz-backend/internal/media"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
 	"github.com/artsgoz/artsgoz-backend/internal/server"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
-
-type articleActivityAdapter struct {
-	activitySvc *activity.Service
-}
-
-func (a *articleActivityAdapter) LogPublish(ctx context.Context, actorID, actorName, articleID, articleTitle, detail string) {
-	if actorName == "" {
-		actorName = "ผู้เขียน"
-	}
-	action := fmt.Sprintf("%s เผยแพร่บทความใหม่ %s", actorName, articleTitle)
-	_, _ = a.activitySvc.Log(ctx, activity.LogInput{
-		Type:         activity.TypePublish,
-		Action:       action,
-		Detail:       detail,
-		ArticleID:    articleID,
-		ArticleTitle: articleTitle,
-		ActorID:      actorID,
-		ActorName:    actorName,
-	})
-}
 
 func main() {
 	if err := run(); err != nil {
@@ -78,7 +55,6 @@ func run() error {
 	// Auto-migrate tables
 	if err := database.DB.AutoMigrate(
 		&user.User{},
-		&article.Article{},
 		&comment.Comment{},
 		&activity.ActivityLog{},
 		&dashboard.TrafficRecord{},
@@ -87,9 +63,6 @@ func run() error {
 	}
 
 	engine := server.New(cfg.GinMode)
-
-	// Static file serving for uploads
-	engine.Static("/uploads", cfg.UploadDir)
 
 	// API groups: register on both /api and /api/v1
 	api := engine.Group("/api")
@@ -108,14 +81,6 @@ func run() error {
 	activityHandler := activity.NewHandler(activityService)
 	activity.RegisterRoutes(api, activityHandler)
 	activity.RegisterRoutes(apiV1, activityHandler)
-
-	// Article module
-	articleRepository := article.NewGormRepository(database.DB)
-	articleService := article.NewService(articleRepository)
-	articleService.SetActivityLogger(&articleActivityAdapter{activitySvc: activityService})
-	articleHandler := article.NewHandler(articleService)
-	article.RegisterRoutes(api, articleHandler)
-	article.RegisterRoutes(apiV1, articleHandler)
 
 	// Comment module
 	commentRepository := comment.NewGormRepository(database.DB)
@@ -151,16 +116,6 @@ func run() error {
 		server.RequireRoles(server.RoleEditor, server.RoleSuperAdmin),
 	)
 	dashboard.RegisterAdminRoutes(adminAPI, dashboardHandler)
-
-	// Media module
-	var storageProvider media.StorageProvider = media.NewLocalStorageProvider(cfg.UploadDir, cfg.UploadBaseURL)
-	if cfg.StorageBucket != "" {
-		storageProvider = media.NewCloudStorageProvider(cfg.StorageBucket, "", storageProvider)
-	}
-	mediaService := media.NewService(storageProvider)
-	mediaHandler := media.NewHandler(mediaService)
-	media.RegisterRoutes(api, mediaHandler)
-	media.RegisterRoutes(apiV1, mediaHandler)
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
