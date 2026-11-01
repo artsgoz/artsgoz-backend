@@ -44,7 +44,7 @@ type Repository interface {
 	GetByID(ctx context.Context, id string) (*Article, error)
 	GetBySlug(ctx context.Context, slug string) (*Article, error)
 	Update(ctx context.Context, item *Article) error
-	UpdateStatus(ctx context.Context, id string, status Status, publishedAt *time.Time) (*Article, error)
+	UpdateStatus(ctx context.Context, id string, status Status, publishedAt *time.Time, publishedBy ...*string) (*Article, error)
 	Delete(ctx context.Context, id string, hard bool) error
 	List(ctx context.Context, params ListParams) (*ListResult, error)
 	IncrementViews(ctx context.Context, id string) error
@@ -130,7 +130,7 @@ func (r *GormRepository) Update(ctx context.Context, item *Article) error {
 	return nil
 }
 
-func (r *GormRepository) UpdateStatus(ctx context.Context, id string, status Status, publishedAt *time.Time) (*Article, error) {
+func (r *GormRepository) UpdateStatus(ctx context.Context, id string, status Status, publishedAt *time.Time, publishedBy ...*string) (*Article, error) {
 	if _, err := r.GetByID(ctx, id); err != nil {
 		return nil, err
 	}
@@ -141,6 +141,9 @@ func (r *GormRepository) UpdateStatus(ctx context.Context, id string, status Sta
 	}
 	if publishedAt != nil {
 		updates["published_at"] = publishedAt
+	}
+	if len(publishedBy) > 0 && publishedBy[0] != nil {
+		updates["published_by"] = *publishedBy[0]
 	}
 
 	if err := r.db.WithContext(ctx).Model(&Article{}).Where("id = ?", id).Updates(updates).Error; err != nil {

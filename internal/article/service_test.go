@@ -10,15 +10,21 @@ import (
 )
 
 type articleRepoStub struct {
-	mu       sync.Mutex
-	articles map[string]*Article
-	slugMap  map[string]string // slug -> id
+	mu           sync.Mutex
+	articles     map[string]*Article
+	slugMap      map[string]string // slug -> id
+	categories   map[string]*Category
+	catSlugMap   map[string]string // slug -> id
+	activityLogs []ActivityLog
 }
 
 func newArticleRepoStub() *articleRepoStub {
 	return &articleRepoStub{
-		articles: make(map[string]*Article),
-		slugMap:  make(map[string]string),
+		articles:     make(map[string]*Article),
+		slugMap:      make(map[string]string),
+		categories:   make(map[string]*Category),
+		catSlugMap:   make(map[string]string),
+		activityLogs: make([]ActivityLog, 0),
 	}
 }
 
@@ -85,7 +91,7 @@ func (r *articleRepoStub) Update(_ context.Context, item *Article) error {
 	return nil
 }
 
-func (r *articleRepoStub) UpdateStatus(_ context.Context, id string, status Status, publishedAt *time.Time) (*Article, error) {
+func (r *articleRepoStub) UpdateStatus(_ context.Context, id string, status Status, publishedAt *time.Time, publishedBy ...*string) (*Article, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -96,6 +102,9 @@ func (r *articleRepoStub) UpdateStatus(_ context.Context, id string, status Stat
 	item.Status = status
 	if publishedAt != nil {
 		item.PublishedAt = publishedAt
+	}
+	if len(publishedBy) > 0 && publishedBy[0] != nil {
+		item.PublishedBy = publishedBy[0]
 	}
 	item.PopulateLabels()
 	copy := *item
@@ -191,6 +200,114 @@ func (r *articleRepoStub) SlugExists(_ context.Context, slug string, excludeID s
 		return false, nil
 	}
 	return true, nil
+}
+
+func (r *articleRepoStub) CreateCategory(_ context.Context, cat *Category) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.catSlugMap[cat.Slug]; exists {
+		return ErrCategoryConflict
+	}
+	copy := *cat
+	r.categories[cat.ID] = &copy
+	r.catSlugMap[cat.Slug] = cat.ID
+	return nil
+}
+
+func (r *articleRepoStub) GetCategoryByID(_ context.Context, id string) (*Category, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cat, exists := r.categories[id]
+	if !exists {
+		return nil, ErrCategoryNotFound
+	}
+	copy := *cat
+	return &copy, nil
+}
+
+func (r *articleRepoStub) GetCategoryBySlug(_ context.Context, slug string) (*Category, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id, exists := r.catSlugMap[slug]
+	if !exists {
+		return nil, ErrCategoryNotFound
+	}
+	cat := r.categories[id]
+	copy := *cat
+	return &copy, nil
+}
+
+func (r *articleRepoStub) UpdateCategory(_ context.Context, cat *Category) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, exists := r.categories[cat.ID]
+	if !exists {
+		return ErrCategoryNotFound
+	}
+	if existing.Slug != cat.Slug {
+		if ownerID, slugExists := r.catSlugMap[cat.Slug]; slugExists && ownerID != cat.ID {
+			return ErrCategoryConflict
+		}
+		delete(r.catSlugMap, existing.Slug)
+		r.catSlugMap[cat.Slug] = cat.ID
+	}
+	copy := *cat
+	r.categories[cat.ID] = &copy
+	return nil
+}
+
+func (r *articleRepoStub) DeleteCategory(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cat, exists := r.categories[id]
+	if !exists {
+		return ErrCategoryNotFound
+	}
+	delete(r.catSlugMap, cat.Slug)
+	delete(r.categories, id)
+	return nil
+}
+
+func (r *articleRepoStub) ListCategories(_ context.Context) ([]Category, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var list []Category
+	for _, cat := range r.categories {
+		list = append(list, *cat)
+	}
+	return list, nil
+}
+
+func (r *articleRepoStub) CategorySlugExists(_ context.Context, slug string, excludeID string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ownerID, exists := r.catSlugMap[slug]
+	if !exists {
+		return false, nil
+	}
+	if excludeID != "" && ownerID == excludeID {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (r *articleRepoStub) CreateActivityLog(_ context.Context, log *ActivityLog) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.activityLogs = append(r.activityLogs, *log)
+	return nil
+}
+
+func (r *articleRepoStub) ListActivityLogs(_ context.Context, articleID string) ([]ActivityLog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var logs []ActivityLog
+	for _, l := range r.activityLogs {
+		if l.ArticleID == articleID {
+			logs = append(logs, l)
+		}
+	}
+	return logs, nil
 }
 
 func TestCreateArticle_Draft(t *testing.T) {

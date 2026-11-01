@@ -12,63 +12,81 @@ import (
 )
 
 var (
-	ErrInvalidTitle        = errors.New("title is required and cannot exceed 500 characters")
-	ErrInvalidContent      = errors.New("content is required")
-	ErrInvalidSlug         = errors.New("slug contains invalid characters")
-	ErrInvalidCategoryName = errors.New("category name is required and cannot exceed 100 characters")
-	ErrForbidden           = errors.New("forbidden: insufficient permissions")
+	ErrInvalidTitle               = errors.New("title is required and cannot exceed 500 characters")
+	ErrInvalidContent             = errors.New("content is required")
+	ErrInvalidSlug                = errors.New("slug contains invalid characters")
+	ErrInvalidCategoryName        = errors.New("category name is required and cannot exceed 100 characters")
+	ErrForbidden                  = errors.New("forbidden: insufficient permissions")
+	ErrMultiplePrimaryCategories  = errors.New("an article can only have one primary category")
 )
 
+func isCMSRole(role string) bool {
+	r := strings.ToLower(strings.TrimSpace(role))
+	return r == "writer" || r == "editor" || r == "superadmin" || r == "admin"
+}
+
 type CreateArticleInput struct {
-	Title              string      `json:"title"`
-	Slug               string      `json:"slug"`
-	Subtitle           string      `json:"subtitle"`
-	Excerpt            string      `json:"excerpt"`
-	Content            string      `json:"content"`
-	CoverImageURL      string      `json:"cover_image_url"`
-	ImageURL           string      `json:"image_url"`
-	CoverImage         string      `json:"cover_image"`
-	Image              string      `json:"image"`
-	AuthorID           string      `json:"author_id"`
-	AuthorName         string      `json:"author_name"`
-	Category           string      `json:"category"`
-	Categories         []string    `json:"categories"`
-	CategoryIDs        []string    `json:"category_ids"`
-	Tags               []string    `json:"tags"`
-	Status             string      `json:"status"`
-	Visibility         string      `json:"visibility"`
-	PublishedAt        *time.Time  `json:"published_at"`
-	PublishDate        interface{} `json:"publish_date"`
-	MetaDescription    string      `json:"meta_description"`
-	SEOMetaDescription string      `json:"seo_meta_description"`
-	References         []string    `json:"references"`
-	User               UserContext `json:"-"`
+	Title              string         `json:"title"`
+	Slug               string         `json:"slug"`
+	Subtitle           string         `json:"subtitle"`
+	Excerpt            string         `json:"excerpt"`
+	Content            string         `json:"content"`
+	CoverImageURL      string         `json:"cover_image_url"`
+	ImageURL           string         `json:"image_url"`
+	CoverImage         string         `json:"cover_image"`
+	Image              string         `json:"image"`
+	AuthorID           string         `json:"author_id"`
+	AuthorName         string         `json:"author_name"`
+	WriterCredit       string         `json:"writer_credit"`
+	ProofreaderCredit  string         `json:"proofreader_credit"`
+	IllustratorCredit  string         `json:"illustrator_credit"`
+	MetaTitle          string         `json:"meta_title"`
+	Category           string         `json:"category"`
+	Categories         []string       `json:"categories"`
+	CategoryIDs        []string       `json:"category_ids"`
+	CategoryItems      []CategoryItem `json:"category_items"`
+	Tags               []string       `json:"tags"`
+	Status             string         `json:"status"`
+	Visibility         string         `json:"visibility"`
+	PublishedAt        *time.Time     `json:"published_at"`
+	PublishedBy        *string        `json:"published_by"`
+	PublishDate        interface{}    `json:"publish_date"`
+	MetaDescription    string         `json:"meta_description"`
+	SEOMetaDescription string         `json:"seo_meta_description"`
+	References         []string       `json:"references"`
+	User               UserContext    `json:"-"`
 }
 
 type UpdateArticleInput struct {
-	Title              *string     `json:"title"`
-	Slug               *string     `json:"slug"`
-	Subtitle           *string     `json:"subtitle"`
-	Excerpt            *string     `json:"excerpt"`
-	Content            *string     `json:"content"`
-	CoverImageURL      *string     `json:"cover_image_url"`
-	ImageURL           *string     `json:"image_url"`
-	CoverImage         *string     `json:"cover_image"`
-	Image              *string     `json:"image"`
-	AuthorID           *string     `json:"author_id"`
-	AuthorName         *string     `json:"author_name"`
-	Category           *string     `json:"category"`
-	Categories         []string    `json:"categories"`
-	CategoryIDs        []string    `json:"category_ids"`
-	Tags               []string    `json:"tags"`
-	Status             *string     `json:"status"`
-	Visibility         *string     `json:"visibility"`
-	PublishedAt        *time.Time  `json:"published_at"`
-	PublishDate        interface{} `json:"publish_date"`
-	MetaDescription    *string     `json:"meta_description"`
-	SEOMetaDescription *string     `json:"seo_meta_description"`
-	References         []string    `json:"references"`
-	User               UserContext `json:"-"`
+	Title              *string        `json:"title"`
+	Slug               *string        `json:"slug"`
+	Subtitle           *string        `json:"subtitle"`
+	Excerpt            *string        `json:"excerpt"`
+	Content            *string        `json:"content"`
+	CoverImageURL      *string        `json:"cover_image_url"`
+	ImageURL           *string        `json:"image_url"`
+	CoverImage         *string        `json:"cover_image"`
+	Image              *string        `json:"image"`
+	AuthorID           *string        `json:"author_id"`
+	AuthorName         *string        `json:"author_name"`
+	WriterCredit       *string        `json:"writer_credit"`
+	ProofreaderCredit  *string        `json:"proofreader_credit"`
+	IllustratorCredit  *string        `json:"illustrator_credit"`
+	MetaTitle          *string        `json:"meta_title"`
+	Category           *string        `json:"category"`
+	Categories         []string       `json:"categories"`
+	CategoryIDs        []string       `json:"category_ids"`
+	CategoryItems      []CategoryItem `json:"category_items"`
+	Tags               []string       `json:"tags"`
+	Status             *string        `json:"status"`
+	Visibility         *string        `json:"visibility"`
+	PublishedAt        *time.Time     `json:"published_at"`
+	PublishedBy        *string        `json:"published_by"`
+	PublishDate        interface{}    `json:"publish_date"`
+	MetaDescription    *string        `json:"meta_description"`
+	SEOMetaDescription *string        `json:"seo_meta_description"`
+	References         []string       `json:"references"`
+	User               UserContext    `json:"-"`
 }
 
 type CreateCategoryInput struct {
@@ -96,6 +114,20 @@ func NewService(repository Repository) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Article, error) {
+	if input.User.Role != "" && !isCMSRole(input.User.Role) {
+		return nil, ErrForbidden
+	}
+
+	primaryCount := 0
+	for _, ci := range input.CategoryItems {
+		if ci.IsPrimary {
+			primaryCount++
+		}
+	}
+	if primaryCount > 1 {
+		return nil, ErrMultiplePrimaryCategories
+	}
+
 	title := strings.TrimSpace(input.Title)
 	if title == "" || len([]rune(title)) > 500 {
 		return nil, ErrInvalidTitle
@@ -106,16 +138,25 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		return nil, ErrInvalidContent
 	}
 
-	slug := strings.TrimSpace(input.Slug)
-	if slug == "" {
-		slug = Slugify(title)
+	var uniqueSlug string
+	explicitSlug := strings.TrimSpace(input.Slug)
+	if explicitSlug != "" {
+		slug := Slugify(explicitSlug)
+		exists, err := s.repository.SlugExists(ctx, slug, "")
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, ErrSlugConflict
+		}
+		uniqueSlug = slug
 	} else {
-		slug = Slugify(slug)
-	}
-
-	uniqueSlug, err := s.ensureUniqueSlug(ctx, slug, "")
-	if err != nil {
-		return nil, err
+		slug := Slugify(title)
+		uSlug, err := s.ensureUniqueSlug(ctx, slug, "")
+		if err != nil {
+			return nil, err
+		}
+		uniqueSlug = uSlug
 	}
 
 	// Resolve image from aliases
@@ -208,6 +249,12 @@ func (s *Service) Create(ctx context.Context, input CreateArticleInput) (*Articl
 		Category:           category,
 		Categories:         categories,
 		CategoryIDs:        categories,
+		CategoryItems:      input.CategoryItems,
+		WriterCredit:       strings.TrimSpace(input.WriterCredit),
+		ProofreaderCredit:  strings.TrimSpace(input.ProofreaderCredit),
+		IllustratorCredit:  strings.TrimSpace(input.IllustratorCredit),
+		MetaTitle:          strings.TrimSpace(input.MetaTitle),
+		PublishedBy:        input.PublishedBy,
 		Tags:               tags,
 		Status:             status,
 		Visibility:         visibility,
@@ -256,6 +303,10 @@ func (s *Service) Get(ctx context.Context, idOrSlug string) (*Article, error) {
 }
 
 func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInput) (*Article, error) {
+	if input.User.Role != "" && !isCMSRole(input.User.Role) {
+		return nil, ErrForbidden
+	}
+
 	item, err := s.repository.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -355,6 +406,33 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateArticleInpu
 	if input.Visibility != nil {
 		item.Visibility = ParseVisibility(*input.Visibility)
 	}
+	if input.CategoryItems != nil {
+		primaryCount := 0
+		for _, ci := range input.CategoryItems {
+			if ci.IsPrimary {
+				primaryCount++
+			}
+		}
+		if primaryCount > 1 {
+			return nil, ErrMultiplePrimaryCategories
+		}
+		item.CategoryItems = input.CategoryItems
+	}
+	if input.WriterCredit != nil {
+		item.WriterCredit = strings.TrimSpace(*input.WriterCredit)
+	}
+	if input.ProofreaderCredit != nil {
+		item.ProofreaderCredit = strings.TrimSpace(*input.ProofreaderCredit)
+	}
+	if input.IllustratorCredit != nil {
+		item.IllustratorCredit = strings.TrimSpace(*input.IllustratorCredit)
+	}
+	if input.MetaTitle != nil {
+		item.MetaTitle = strings.TrimSpace(*input.MetaTitle)
+	}
+	if input.PublishedBy != nil {
+		item.PublishedBy = input.PublishedBy
+	}
 
 	// Meta description aliases
 	if input.MetaDescription != nil {
@@ -414,6 +492,10 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, rawStatus string,
 		u = user[0]
 	}
 
+	if u.Role != "" && !isCMSRole(u.Role) {
+		return nil, ErrForbidden
+	}
+
 	// OWASP BFLA Protection: Writer cannot change status directly
 	if strings.EqualFold(u.Role, "Writer") {
 		return nil, ErrForbidden
@@ -426,12 +508,21 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, rawStatus string,
 
 	newStatus := ParseStatus(rawStatus)
 	var publishedAt *time.Time
-	if newStatus == StatusPublished && item.PublishedAt == nil {
-		now := time.Now().UTC()
-		publishedAt = &now
+	var publishedBy *string
+	if newStatus == StatusPublished {
+		if item.PublishedAt == nil {
+			now := time.Now().UTC()
+			publishedAt = &now
+		} else {
+			publishedAt = item.PublishedAt
+		}
+		if u.ID != "" {
+			pubID := u.ID
+			publishedBy = &pubID
+		}
 	}
 
-	updated, err := s.repository.UpdateStatus(ctx, id, newStatus, publishedAt)
+	updated, err := s.repository.UpdateStatus(ctx, id, newStatus, publishedAt, publishedBy)
 	if err != nil {
 		return nil, err
 	}

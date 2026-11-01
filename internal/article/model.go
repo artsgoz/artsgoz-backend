@@ -37,6 +37,12 @@ type UserContext struct {
 	Role string `json:"role"` // Writer, Editor, SuperAdmin
 }
 
+type CategoryItem struct {
+	CategoryID int64  `json:"category_id"`
+	Name       string `json:"name,omitempty"`
+	IsPrimary  bool   `json:"is_primary"`
+}
+
 type Category struct {
 	ID           string    `gorm:"type:uuid;primaryKey" json:"id"`
 	Name         string    `gorm:"type:varchar(100);not null;uniqueIndex" json:"name"`
@@ -79,9 +85,15 @@ type Article struct {
 	ImageURL           string         `gorm:"type:text;column:image_url" json:"image_url,omitempty"`
 	AuthorID           string         `gorm:"type:varchar(255);index" json:"author_id,omitempty"`
 	AuthorName         string         `gorm:"type:varchar(255)" json:"author_name,omitempty"`
+	WriterCredit       string         `gorm:"type:varchar(255)" json:"writer_credit,omitempty"`
+	ProofreaderCredit  string         `gorm:"type:varchar(255)" json:"proofreader_credit,omitempty"`
+	IllustratorCredit  string         `gorm:"type:varchar(255)" json:"illustrator_credit,omitempty"`
+	MetaTitle          string         `gorm:"type:varchar(200)" json:"meta_title,omitempty"`
+	PublishedBy        *string        `gorm:"type:varchar(255);column:published_by" json:"published_by,omitempty"`
 	Category           string         `gorm:"type:varchar(100);index" json:"category"`
 	Categories         []string       `gorm:"serializer:json" json:"categories"`
 	CategoryIDs        []string       `gorm:"serializer:json" json:"category_ids,omitempty"`
+	CategoryItems      []CategoryItem `gorm:"serializer:json" json:"category_items,omitempty"`
 	Tags               []string       `gorm:"serializer:json" json:"tags"`
 	Status             Status         `gorm:"type:varchar(50);index;not null;default:'draft'" json:"status"`
 	StatusLabel        string         `gorm:"-" json:"status_label"`

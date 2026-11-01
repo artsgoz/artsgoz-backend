@@ -163,6 +163,7 @@ func TestHandler_GetArticle(t *testing.T) {
 		Title:   "Article To Fetch",
 		Slug:    "fetch-me",
 		Content: "Content for fetching",
+		Status:  "published",
 	})
 	if err != nil {
 		t.Fatalf("Create error: %v", err)
@@ -300,7 +301,8 @@ func TestHandler_ListArticles(t *testing.T) {
 		Title: "Article 2", Content: "Content 2", Category: "ปรัชญา", Status: "draft",
 	})
 
-	req, _ := http.NewRequest(http.MethodGet, "/api/articles?search=Article&status=all&page=1&page_size=10", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/api/admin/articles?search=Article&status=all&page=1&page_size=10", nil)
+	req.Header.Set("X-User-Role", "Editor")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

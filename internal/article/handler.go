@@ -51,8 +51,12 @@ type createArticleRequest struct {
 	Image              string      `json:"image"`
 	AuthorID           string      `json:"author_id"`
 	AuthorName         string      `json:"author_name"`
+	WriterCredit       string      `json:"writer_credit"`
+	ProofreaderCredit  string      `json:"proofreader_credit"`
+	IllustratorCredit  string      `json:"illustrator_credit"`
+	MetaTitle          string      `json:"meta_title"`
 	Category           string      `json:"category"`
-	Categories         []string    `json:"categories"`
+	Categories         interface{} `json:"categories"`
 	CategoryIDs        []string    `json:"category_ids"`
 	Tags               []string    `json:"tags"`
 	Status             string      `json:"status"`
@@ -76,8 +80,12 @@ type updateArticleRequest struct {
 	Image              *string     `json:"image"`
 	AuthorID           *string     `json:"author_id"`
 	AuthorName         *string     `json:"author_name"`
+	WriterCredit       *string     `json:"writer_credit"`
+	ProofreaderCredit  *string     `json:"proofreader_credit"`
+	IllustratorCredit  *string     `json:"illustrator_credit"`
+	MetaTitle          *string     `json:"meta_title"`
 	Category           *string     `json:"category"`
-	Categories         []string    `json:"categories"`
+	Categories         interface{} `json:"categories"`
 	CategoryIDs        []string    `json:"category_ids"`
 	Tags               []string    `json:"tags"`
 	Status             *string     `json:"status"`
@@ -87,6 +95,47 @@ type updateArticleRequest struct {
 	MetaDescription    *string     `json:"meta_description"`
 	SEOMetaDescription *string     `json:"seo_meta_description"`
 	References         []string    `json:"references"`
+}
+
+func parseCategories(raw interface{}) ([]string, []CategoryItem, error) {
+	if raw == nil {
+		return []string{}, nil, nil
+	}
+	var catStrings []string
+	var catItems []CategoryItem
+
+	switch val := raw.(type) {
+	case []interface{}:
+		for _, v := range val {
+			switch item := v.(type) {
+			case string:
+				catStrings = append(catStrings, item)
+			case map[string]interface{}:
+				var ci CategoryItem
+				if id, ok := item["category_id"]; ok {
+					switch num := id.(type) {
+					case float64:
+						ci.CategoryID = int64(num)
+					case int64:
+						ci.CategoryID = num
+					case int:
+						ci.CategoryID = int64(num)
+					}
+				}
+				if name, ok := item["name"].(string); ok {
+					ci.Name = name
+					catStrings = append(catStrings, name)
+				}
+				if isPrimary, ok := item["is_primary"].(bool); ok {
+					ci.IsPrimary = isPrimary
+				}
+				catItems = append(catItems, ci)
+			}
+		}
+	case []string:
+		catStrings = val
+	}
+	return catStrings, catItems, nil
 }
 
 type updateStatusRequest struct {
@@ -118,6 +167,31 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	userCtx := getUserContext(c)
+	isAdminRoute := strings.Contains(c.Request.URL.Path, "/admin")
+	if userCtx.Role != "" && !isCMSRole(userCtx.Role) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
+	if isAdminRoute && (userCtx.Role == "" || !isCMSRole(userCtx.Role)) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
+
+	catStrings, catItems, catErr := parseCategories(req.Categories)
+	if catErr != nil {
+		writeError(c, http.StatusBadRequest, "validation", catErr.Error())
+		return
+	}
+	primaryCount := 0
+	for _, ci := range catItems {
+		if ci.IsPrimary {
+			primaryCount++
+		}
+	}
+	if primaryCount > 1 {
+		writeError(c, http.StatusBadRequest, "validation", "an article can only have one primary category")
+		return
+	}
 
 	item, err := h.service.Create(c.Request.Context(), CreateArticleInput{
 		Title:              req.Title,
@@ -131,9 +205,14 @@ func (h *Handler) Create(c *gin.Context) {
 		Image:              req.Image,
 		AuthorID:           req.AuthorID,
 		AuthorName:         req.AuthorName,
+		WriterCredit:       req.WriterCredit,
+		ProofreaderCredit:  req.ProofreaderCredit,
+		IllustratorCredit:  req.IllustratorCredit,
+		MetaTitle:          req.MetaTitle,
 		Category:           req.Category,
-		Categories:         req.Categories,
+		Categories:         catStrings,
 		CategoryIDs:        req.CategoryIDs,
+		CategoryItems:      catItems,
 		Tags:               req.Tags,
 		Status:             req.Status,
 		Visibility:         req.Visibility,
@@ -146,7 +225,7 @@ func (h *Handler) Create(c *gin.Context) {
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrInvalidTitle), errors.Is(err, ErrInvalidContent):
+		case errors.Is(err, ErrInvalidTitle), errors.Is(err, ErrInvalidContent), errors.Is(err, ErrMultiplePrimaryCategories):
 			writeError(c, http.StatusBadRequest, "validation", err.Error())
 		case errors.Is(err, ErrSlugConflict):
 			writeError(c, http.StatusConflict, "conflict", err.Error())
@@ -175,6 +254,16 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
+	isAdminRoute := strings.Contains(c.Request.URL.Path, "/admin")
+	userCtx := getUserContext(c)
+	isCMS := userCtx.Role != "" && isCMSRole(userCtx.Role)
+	if !isAdminRoute && !isCMS {
+		if item.Status != StatusPublished {
+			writeError(c, http.StatusNotFound, "not_found", "article not found")
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, item)
 }
 
@@ -188,6 +277,36 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 
 	userCtx := getUserContext(c)
+	isAdminRoute := strings.Contains(c.Request.URL.Path, "/admin")
+	if userCtx.Role != "" && !isCMSRole(userCtx.Role) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
+	if isAdminRoute && (userCtx.Role == "" || !isCMSRole(userCtx.Role)) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
+
+	var catStrings []string
+	var catItems []CategoryItem
+	if req.Categories != nil {
+		var catErr error
+		catStrings, catItems, catErr = parseCategories(req.Categories)
+		if catErr != nil {
+			writeError(c, http.StatusBadRequest, "validation", catErr.Error())
+			return
+		}
+		primaryCount := 0
+		for _, ci := range catItems {
+			if ci.IsPrimary {
+				primaryCount++
+			}
+		}
+		if primaryCount > 1 {
+			writeError(c, http.StatusBadRequest, "validation", "an article can only have one primary category")
+			return
+		}
+	}
 
 	item, err := h.service.Update(c.Request.Context(), id, UpdateArticleInput{
 		Title:              req.Title,
@@ -201,9 +320,14 @@ func (h *Handler) Update(c *gin.Context) {
 		Image:              req.Image,
 		AuthorID:           req.AuthorID,
 		AuthorName:         req.AuthorName,
+		WriterCredit:       req.WriterCredit,
+		ProofreaderCredit:  req.ProofreaderCredit,
+		IllustratorCredit:  req.IllustratorCredit,
+		MetaTitle:          req.MetaTitle,
 		Category:           req.Category,
-		Categories:         req.Categories,
+		Categories:         catStrings,
 		CategoryIDs:        req.CategoryIDs,
+		CategoryItems:      catItems,
 		Tags:               req.Tags,
 		Status:             req.Status,
 		Visibility:         req.Visibility,
@@ -218,7 +342,7 @@ func (h *Handler) Update(c *gin.Context) {
 		switch {
 		case errors.Is(err, ErrArticleNotFound):
 			writeError(c, http.StatusNotFound, "not_found", "article not found")
-		case errors.Is(err, ErrInvalidTitle), errors.Is(err, ErrInvalidContent):
+		case errors.Is(err, ErrInvalidTitle), errors.Is(err, ErrInvalidContent), errors.Is(err, ErrMultiplePrimaryCategories):
 			writeError(c, http.StatusBadRequest, "validation", err.Error())
 		case errors.Is(err, ErrSlugConflict):
 			writeError(c, http.StatusConflict, "conflict", err.Error())
@@ -243,6 +367,15 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 	}
 
 	userCtx := getUserContext(c)
+	isAdminRoute := strings.Contains(c.Request.URL.Path, "/admin")
+	if userCtx.Role != "" && !isCMSRole(userCtx.Role) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
+	if isAdminRoute && (userCtx.Role == "" || !isCMSRole(userCtx.Role)) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
 
 	item, err := h.service.UpdateStatus(c.Request.Context(), id, req.Status, userCtx)
 	if err != nil {
@@ -265,6 +398,15 @@ func (h *Handler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	hard := c.Query("permanent") == "true" || c.Query("hard") == "true"
 	userCtx := getUserContext(c)
+	isAdminRoute := strings.Contains(c.Request.URL.Path, "/admin")
+	if userCtx.Role != "" && !isCMSRole(userCtx.Role) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
+	if isAdminRoute && (userCtx.Role == "" || !isCMSRole(userCtx.Role)) {
+		writeError(c, http.StatusForbidden, "forbidden", "forbidden: cms access required")
+		return
+	}
 
 	if err := h.service.Delete(c.Request.Context(), id, hard, userCtx); err != nil {
 		switch {
@@ -299,9 +441,18 @@ func (h *Handler) List(c *gin.Context) {
 
 	includeDeleted := c.Query("include_deleted") == "true"
 
+	isAdminRoute := strings.Contains(c.Request.URL.Path, "/admin")
+	userCtx := getUserContext(c)
+	isCMS := userCtx.Role != "" && isCMSRole(userCtx.Role)
+
+	requestedStatus := c.Query("status")
+	if !isAdminRoute && !isCMS {
+		requestedStatus = string(StatusPublished)
+	}
+
 	params := ListParams{
 		Search:         search,
-		Status:         c.Query("status"),
+		Status:         requestedStatus,
 		Category:       c.Query("category"),
 		CategoryID:     c.Query("category_id"),
 		Author:         c.Query("author"),
