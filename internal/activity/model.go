@@ -20,6 +20,8 @@ type ActivityLog struct {
 	Detail       string    `gorm:"type:text" json:"detail"`
 	ArticleID    string    `gorm:"type:varchar(255);index" json:"article_id,omitempty"`
 	ArticleTitle string    `gorm:"type:varchar(500)" json:"article_title,omitempty"`
+	EntityType   string    `gorm:"type:varchar(50)" json:"entity_type,omitempty"`
+	EntityID     string    `gorm:"type:varchar(255)" json:"entity_id,omitempty"`
 	ActorID      string    `gorm:"type:varchar(255);index" json:"actor_id,omitempty"`
 	ActorName    string    `gorm:"type:varchar(255)" json:"actor_name,omitempty"`
 	CreatedAt    time.Time `gorm:"not null;index" json:"created_at"`
@@ -38,6 +40,8 @@ type ActivityItem struct {
 	TimeAgo      string    `json:"time_ago"`
 	ArticleTitle string    `json:"article_title,omitempty"`
 	ArticleID    string    `json:"article_id,omitempty"`
+	EntityType   string    `json:"entity_type,omitempty"`
+	EntityID     string    `json:"entity_id,omitempty"`
 	ActorName    string    `json:"actor_name,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -78,6 +82,14 @@ func FormatThaiTimeAgo(t time.Time, now time.Time) string {
 }
 
 func (l *ActivityLog) ToItem(now time.Time) ActivityItem {
+	entityType := l.EntityType
+	if entityType == "" {
+		entityType = "article"
+	}
+	entityID := l.EntityID
+	if entityID == "" {
+		entityID = l.ArticleID
+	}
 	return ActivityItem{
 		ID:           l.ID,
 		Type:         l.Type,
@@ -86,6 +98,8 @@ func (l *ActivityLog) ToItem(now time.Time) ActivityItem {
 		TimeAgo:      FormatThaiTimeAgo(l.CreatedAt, now),
 		ArticleTitle: l.ArticleTitle,
 		ArticleID:    l.ArticleID,
+		EntityType:   entityType,
+		EntityID:     entityID,
 		ActorName:    l.ActorName,
 		CreatedAt:    l.CreatedAt,
 	}

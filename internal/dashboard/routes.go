@@ -11,6 +11,11 @@ func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
 		dash.GET("/export", handler.Export)
 		dash.POST("/traffic/record", handler.RecordTraffic)
 	}
+
+	articles := router.Group("/articles")
+	{
+		articles.POST("/:id/views", handler.RecordArticleView)
+	}
 }
 
 // RegisterAdminRoutes registers the spec-compliant admin dashboard analytics endpoints.

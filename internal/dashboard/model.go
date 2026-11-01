@@ -44,6 +44,19 @@ func (a *ArticleSummary) AfterFind(_ *gorm.DB) error {
 	return nil
 }
 
+// ArticleView represents a privacy-compliant view event in article_views table.
+type ArticleView struct {
+	ID        int64     `gorm:"type:bigserial;primaryKey" json:"id"`
+	ArticleID string    `gorm:"type:uuid;not null;index" json:"article_id"`
+	IPHash    string    `gorm:"type:varchar(64)" json:"ip_hash"`
+	UserAgent string    `gorm:"type:text" json:"user_agent"`
+	ViewedAt  time.Time `gorm:"not null;default:now()" json:"viewed_at"`
+}
+
+func (ArticleView) TableName() string {
+	return "article_views"
+}
+
 // TrafficRecord records page views and traffic source channels.
 type TrafficRecord struct {
 	ID        string    `gorm:"type:uuid;primaryKey" json:"id"`
@@ -56,13 +69,16 @@ func (TrafficRecord) TableName() string {
 	return "traffic_records"
 }
 
-// OverviewMetrics represents the 4 key overview metrics cards.
+// OverviewMetrics represents the key overview metrics cards.
 type OverviewMetrics struct {
 	TotalViews             int64    `json:"total_views"`
 	TotalViewsFormatted    string   `json:"total_views_formatted"`
 	TotalViewsGrowthRate   float64  `json:"total_views_growth_rate"`
 	TopCategories          []string `json:"top_categories"`
+	TotalArticlesCount     int64    `json:"total_articles_count"`
 	PublishedArticlesCount int64    `json:"published_articles_count"`
+	DraftArticlesCount     int64    `json:"draft_articles_count"`
+	ArchivedArticlesCount  int64    `json:"archived_articles_count"`
 	NewCommentsCount       int64    `json:"new_comments_count"`
 	NewCommentsGrowthRate  float64  `json:"new_comments_growth_rate"`
 }
@@ -151,7 +167,10 @@ type StatsResponse struct {
 	TotalViews             int64   `json:"total_views"`
 	TotalViewsFormatted    string  `json:"total_views_formatted"`
 	TotalViewsGrowthRate   float64 `json:"total_views_growth_rate"`
+	TotalArticlesCount     int64   `json:"total_articles_count"`
 	PublishedArticlesCount int64   `json:"published_articles_count"`
+	DraftArticlesCount     int64   `json:"draft_articles_count"`
+	ArchivedArticlesCount  int64   `json:"archived_articles_count"`
 	PendingCommentsCount   int64   `json:"pending_comments_count"`
 	PendingCommentsGrowth  float64 `json:"pending_comments_growth_rate"`
 	TotalCategoriesCount   int     `json:"total_categories_count"`

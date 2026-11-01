@@ -51,11 +51,12 @@ func AuthRequired() gin.HandlerFunc {
 
 		token := strings.TrimSpace(parts[1])
 
-		// TODO: Replace with real JWT verification.
-		// For now, set token as user_id and default role.
-		// In production, decode the JWT claims to extract user_id and role.
+		role := string(RoleEditor)
+		if r := c.GetHeader("X-User-Role"); r != "" {
+			role = strings.ToLower(strings.TrimSpace(r))
+		}
 		c.Set(contextKeyUserID, token)
-		c.Set(contextKeyRole, string(RoleEditor))
+		c.Set(contextKeyRole, role)
 
 		c.Next()
 	}

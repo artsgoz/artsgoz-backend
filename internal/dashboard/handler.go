@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -80,6 +81,36 @@ func (h *Handler) RecordTraffic(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// RecordArticleView handles POST /api/v1/articles/:id/views
+func (h *Handler) RecordArticleView(c *gin.Context) {
+	articleID := c.Param("id")
+	if articleID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "article id is required"})
+		return
+	}
+
+	ip := c.ClientIP()
+	if fwd := c.GetHeader("X-Forwarded-For"); fwd != "" {
+		parts := strings.Split(fwd, ",")
+		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+			ip = strings.TrimSpace(parts[0])
+		}
+	}
+
+	userAgent := c.GetHeader("User-Agent")
+
+	newViewCount, err := h.service.RecordArticleView(c.Request.Context(), articleID, ip, userAgent)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":     "ok",
+		"view_count": newViewCount,
+	})
 }
 
 // ---------------------------------------------------------------------------

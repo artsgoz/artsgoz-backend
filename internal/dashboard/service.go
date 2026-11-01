@@ -3,7 +3,9 @@ package dashboard
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -47,6 +49,18 @@ func (s *Service) RecordTraffic(ctx context.Context, articleID, source string) e
 		Source:    cleanSource,
 		CreatedAt: time.Now().UTC(),
 	})
+}
+
+// RecordArticleView records an article view event with a privacy-compliant SHA-256 hashed IP and increments the counter cache.
+func (s *Service) RecordArticleView(ctx context.Context, articleID, ip, userAgent string) (int64, error) {
+	cleanIP := strings.TrimSpace(ip)
+	if cleanIP == "" {
+		cleanIP = "127.0.0.1"
+	}
+	hash := sha256.Sum256([]byte(cleanIP))
+	ipHash := hex.EncodeToString(hash[:])
+
+	return s.repo.RecordArticleView(ctx, strings.TrimSpace(articleID), ipHash, strings.TrimSpace(userAgent))
 }
 
 // GetOverview returns summary cards, monthly chart, top articles, and recent activities.
@@ -510,10 +524,12 @@ func (s *Service) GetStats(ctx context.Context) (*StatsResponse, error) {
 	prevTraffic, _ := s.repo.GetTrafficCountBetween(ctx, startOfLastMonth, startOfThisMonth)
 	viewsGrowthRate := CalculateGrowthRate(currTraffic, prevTraffic)
 
-	// 2. Published articles count
-	publishedCount, err := s.repo.GetPublishedArticlesCount(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get published articles count: %w", err)
+	// 2. Articles count by status
+	totalArticles, draftArticles, publishedArticles, archivedArticles, _ := s.repo.GetArticlesCountByStatus(ctx)
+	if publishedArticles == 0 {
+		publishedCount, _ := s.repo.GetPublishedArticlesCount(ctx)
+		publishedArticles = publishedCount
+		totalArticles = publishedCount
 	}
 
 	// 3. Pending comments (new comments awaiting review)
@@ -532,7 +548,10 @@ func (s *Service) GetStats(ctx context.Context) (*StatsResponse, error) {
 		TotalViews:             totalViews,
 		TotalViewsFormatted:    FormatViews(totalViews),
 		TotalViewsGrowthRate:   viewsGrowthRate,
-		PublishedArticlesCount: publishedCount,
+		TotalArticlesCount:     totalArticles,
+		PublishedArticlesCount: publishedArticles,
+		DraftArticlesCount:     draftArticles,
+		ArchivedArticlesCount:  archivedArticles,
 		PendingCommentsCount:   pendingCommentsCount,
 		PendingCommentsGrowth:  pendingCommentsGrowth,
 		TotalCategoriesCount:   totalCategoriesCount,

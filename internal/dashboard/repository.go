@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -20,6 +21,8 @@ type SourceCount struct {
 
 type Repository interface {
 	RecordTraffic(ctx context.Context, item *TrafficRecord) error
+	RecordArticleView(ctx context.Context, articleID, ipHash, userAgent string) (int64, error)
+	GetArticlesCountByStatus(ctx context.Context) (total int64, draft int64, published int64, archived int64, err error)
 	GetTotalArticleViews(ctx context.Context) (int64, error)
 	GetPublishedArticlesCount(ctx context.Context) (int64, error)
 	GetTopCategories(ctx context.Context, limit int) ([]string, error)
@@ -46,10 +49,68 @@ func (r *gormRepository) RecordTraffic(ctx context.Context, item *TrafficRecord)
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
+func (r *gormRepository) RecordArticleView(ctx context.Context, articleID, ipHash, userAgent string) (int64, error) {
+	view := ArticleView{
+		ArticleID: articleID,
+		IPHash:    ipHash,
+		UserAgent: userAgent,
+		ViewedAt:  time.Now().UTC(),
+	}
+	_ = r.db.WithContext(ctx).Create(&view).Error
+
+	_ = r.db.WithContext(ctx).Create(&TrafficRecord{
+		ID:        uuid.New().String(),
+		ArticleID: articleID,
+		Source:    "organic",
+		CreatedAt: time.Now().UTC(),
+	}).Error
+
+	if err := r.db.WithContext(ctx).Table("articles").
+		Where("id = ?", articleID).
+		Update("view_count", gorm.Expr("view_count + 1")).Error; err != nil {
+		return 0, err
+	}
+
+	var count int64
+	_ = r.db.WithContext(ctx).Table("articles").
+		Where("id = ?", articleID).
+		Select("view_count").
+		Scan(&count).Error
+
+	return count, nil
+}
+
+func (r *gormRepository) GetArticlesCountByStatus(ctx context.Context) (total int64, draft int64, published int64, archived int64, err error) {
+	type StatusCount struct {
+		Status string
+		Count  int64
+	}
+	var results []StatusCount
+	err = r.db.WithContext(ctx).Table("articles").
+		Select("status, COUNT(*) as count").
+		Group("status").
+		Scan(&results).Error
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	for _, sc := range results {
+		total += sc.Count
+		switch sc.Status {
+		case "published":
+			published += sc.Count
+		case "draft":
+			draft += sc.Count
+		case "archived":
+			archived += sc.Count
+		}
+	}
+	return total, draft, published, archived, nil
+}
+
 func (r *gormRepository) GetTotalArticleViews(ctx context.Context) (int64, error) {
 	var total *int64
 	err := r.db.WithContext(ctx).Table("articles").
-		Select("COALESCE(SUM(views_count), 0)").
+		Select("COALESCE(SUM(view_count), SUM(views_count), 0)").
 		Scan(&total).Error
 	if err != nil || total == nil {
 		return 0, err
