@@ -24,7 +24,7 @@ func RegisterRoutes(router *gin.RouterGroup, adminHandler *AdminHandler, require
 		})
 	})
 	adminGroup.GET("/users", adminHandler.GetAllUsers)
-	adminGroup.PUT("/users/:uid/role", adminHandler.UpdateUserRole)
+	adminGroup.PUT("/users/:id/role", adminHandler.UpdateUserRole)
 	adminGroup.GET("/me", adminHandler.GetProfile)
 	adminGroup.PUT("/me", adminHandler.UpdateProfile)
 }

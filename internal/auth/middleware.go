@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Middleware verifies Firebase tokens before allowing access to authenticated routes.
+// Middleware verifies JWT tokens before allowing access to authenticated routes.
 func Middleware(service *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
@@ -20,13 +20,17 @@ func Middleware(service *Service) gin.HandlerFunc {
 			return
 		}
 
-		identity, err := service.VerifyToken(c.Request.Context(), strings.TrimPrefix(header, "Bearer "))
+		tokenString := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+		claims, err := service.ValidateToken(tokenString)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid, revoked, or disabled token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
-		c.Set("identity", identity)
-		c.Set("uid", identity.UID)
+
+		c.Set("user_id", claims.UserID)
+		c.Set("uid", claims.UserID) // compatibility
+		c.Set("username", claims.Username)
+		c.Set("role", claims.Role)
 		c.Next()
 	}
 }

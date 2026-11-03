@@ -9,9 +9,9 @@ import (
 
 type AdminService interface {
 	GetAllUsers() ([]*User, error)
-	UpdateUserRole(uid string, role string) error
-	GetProfile(uid string) (*User, error)
-	UpdateProfile(uid string, req UpdateProfileRequest) (*User, error)
+	UpdateUserRole(id string, role string) error
+	GetProfile(id string) (*User, error)
+	UpdateProfile(id string, req UpdateProfileRequest) (*User, error)
 }
 
 type adminService struct {
@@ -28,18 +28,18 @@ func (u *adminService) GetAllUsers() ([]*User, error) {
 	return u.userRepo.GetAllUsers()
 }
 
-func (u *adminService) UpdateUserRole(uid string, role string) error {
+func (u *adminService) UpdateUserRole(id string, role string) error {
 	if role != "student" && role != "teacher" && role != "club-member" && role != "admin" {
 		return errors.New("invalid role (must be student, teacher, club-member, or admin)")
 	}
-	return u.userRepo.UpdateRole(uid, role)
+	return u.userRepo.UpdateRole(id, role)
 }
 
-func (u *adminService) GetProfile(uid string) (*User, error) {
-	if uid == "" {
+func (u *adminService) GetProfile(id string) (*User, error) {
+	if id == "" {
 		return nil, errors.New("user ID is required")
 	}
-	profile, err := u.userRepo.FindByUID(context.Background(), uid)
+	profile, err := u.userRepo.FindByID(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -49,8 +49,8 @@ func (u *adminService) GetProfile(uid string) (*User, error) {
 	return profile, nil
 }
 
-func (u *adminService) UpdateProfile(uid string, req UpdateProfileRequest) (*User, error) {
-	if uid == "" {
+func (u *adminService) UpdateProfile(id string, req UpdateProfileRequest) (*User, error) {
+	if id == "" {
 		return nil, errors.New("user ID is required")
 	}
 	req.Email = strings.TrimSpace(req.Email)
@@ -60,5 +60,5 @@ func (u *adminService) UpdateProfile(uid string, req UpdateProfileRequest) (*Use
 	if _, err := mail.ParseAddress(req.Email); err != nil {
 		return nil, errors.New("invalid email format")
 	}
-	return u.userRepo.UpdateProfile(uid, req.Email)
+	return u.userRepo.UpdateProfile(id, req.Email)
 }

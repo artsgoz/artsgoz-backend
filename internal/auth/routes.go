@@ -7,12 +7,13 @@ func Register(router *gin.RouterGroup, service *Service) {
 	requireAuth := Middleware(service)
 
 	routes := router.Group("/auth")
+	routes.POST("/register", handler.Register)
 	routes.POST("/login", handler.Login)
-	routes.POST("/register", requireAuth, handler.Register)
+	routes.GET("/me", requireAuth, handler.Me)
 	routes.POST("/logout", requireAuth, handler.Logout)
 
 	// Keep root-level aliases for existing clients.
 	router.POST("/login", handler.Login)
-	router.POST("/register", requireAuth, handler.Register)
+	router.POST("/register", handler.Register)
 	router.GET("/me", requireAuth, handler.Me)
 }

@@ -7,28 +7,34 @@ import (
 	"gorm.io/gorm"
 )
 
-// RequireRole checks the user's role in PostgreSQL.
-// Use after authentication middleware has supplied the Firebase UID.
+// RequireRole checks the user's role.
+// It first checks if role is already stored in Gin context (e.g. from JWT),
+// falling back to querying PostgreSQL by user ID.
 func RequireRole(db *gorm.DB, allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		uid := c.GetString("uid")
-		if uid == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
-			return
+		role := c.GetString("role")
+		if role == "" {
+			userID := c.GetString("user_id")
+			if userID == "" {
+				userID = c.GetString("uid")
+			}
+			if userID == "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+				return
+			}
+
+			var u User
+			err := db.WithContext(c.Request.Context()).Select("role").Where("id = ?", userID).Take(&u).Error
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "user not found"})
+				return
+			}
+			role = u.Role
 		}
 
-		// Retrieve user role from PostgreSQL
-		var user User
-		err := db.WithContext(c.Request.Context()).Select("role").Where("firebase_uid = ?", uid).Take(&user).Error
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "user not found"})
-			return
-		}
-
-		// Check if the user's role matches the specified allowedRoles
 		for _, allowed := range allowedRoles {
-			if user.Role == allowed {
-				c.Set("role", user.Role)
+			if role == allowed {
+				c.Set("role", role)
 				c.Next()
 				return
 			}

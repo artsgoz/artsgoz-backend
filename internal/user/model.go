@@ -3,9 +3,11 @@ package user
 import "time"
 
 type User struct {
-	FirebaseUID string    `json:"firebase_uid" gorm:"column:firebase_uid;primaryKey"`
-	Email       string    `json:"email"`
-	Role        string    `json:"role"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id" gorm:"column:id;primaryKey"`
+	Username     string    `json:"username" gorm:"column:username;type:varchar(100);uniqueIndex;not null"`
+	Email        string    `json:"email" gorm:"column:email;type:varchar(255);uniqueIndex"`
+	PasswordHash string    `json:"-" gorm:"column:password_hash;not null"`
+	Role         string    `json:"role" gorm:"column:role;default:'student'"`
+	CreatedAt    time.Time `json:"created_at" gorm:"column:created_at"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"column:updated_at"`
 }

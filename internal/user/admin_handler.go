@@ -1,8 +1,9 @@
 package user
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 type AdminHandler struct {
@@ -25,21 +26,22 @@ func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 }
 
 func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
-	uid := c.Param("uid")
-	if uid == "" {
+	id := c.Param("id")
+	if id == "" {
+		id = c.Param("uid")
+	}
+	if id == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user ID is required"})
 		return
 	}
 
-	var req struct {
-		Role string `json:"role"`
-	}
+	var req UpdateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
 		return
 	}
 
-	if err := h.adminService.UpdateUserRole(uid, req.Role); err != nil {
+	if err := h.adminService.UpdateUserRole(id, req.Role); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -48,53 +50,60 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 }
 
 func (h *AdminHandler) GetProfile(c *gin.Context) {
-	uid := c.GetString("uid")
-	if uid == "" {
+	userID := getUserIDFromContext(c)
+	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
-	user, err := h.adminService.GetProfile(uid)
+	user, err := h.adminService.GetProfile(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve user data: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"firebase_uid": user.FirebaseUID,
-		"uid":          user.FirebaseUID,
-		"email":        user.Email,
-		"role":         user.Role,
-		"created_at":   user.CreatedAt,
-		"updated_at":   user.UpdatedAt,
+		"id":         user.ID,
+		"username":   user.Username,
+		"email":      user.Email,
+		"role":       user.Role,
+		"created_at": user.CreatedAt,
+		"updated_at": user.UpdatedAt,
 	})
 }
 
 func (h *AdminHandler) UpdateProfile(c *gin.Context) {
-	uid := c.GetString("uid")
-	if uid == "" {
+	userID := getUserIDFromContext(c)
+	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
 
 	var req UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
 		return
 	}
 
-	user, err := h.adminService.UpdateProfile(uid, req)
+	user, err := h.adminService.UpdateProfile(userID, req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":      "profile updated successfully",
-		"firebase_uid": user.FirebaseUID,
-		"uid":          user.FirebaseUID,
-		"email":        user.Email,
-		"role":         user.Role,
-		"updated_at":   user.UpdatedAt,
+		"message":    "profile updated successfully",
+		"id":         user.ID,
+		"username":   user.Username,
+		"email":      user.Email,
+		"role":       user.Role,
+		"updated_at": user.UpdatedAt,
 	})
+}
+
+func getUserIDFromContext(c *gin.Context) string {
+	if val := c.GetString("user_id"); val != "" {
+		return val
+	}
+	return c.GetString("uid")
 }
