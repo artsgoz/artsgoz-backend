@@ -550,11 +550,15 @@ func (s *Service) GetStats(ctx context.Context) (*StatsResponse, error) {
 		TotalViewsGrowthRate:   viewsGrowthRate,
 		TotalArticlesCount:     totalArticles,
 		PublishedArticlesCount: publishedArticles,
+		PublishedArticles:      publishedArticles,
 		DraftArticlesCount:     draftArticles,
+		DraftArticles:          draftArticles,
 		ArchivedArticlesCount:  archivedArticles,
 		PendingCommentsCount:   pendingCommentsCount,
+		PendingComments:        pendingCommentsCount,
 		PendingCommentsGrowth:  pendingCommentsGrowth,
 		TotalCategoriesCount:   totalCategoriesCount,
+		TotalCategories:        totalCategoriesCount,
 	}, nil
 }
 

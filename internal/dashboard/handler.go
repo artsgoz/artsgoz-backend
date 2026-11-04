@@ -122,10 +122,19 @@ func (h *Handler) RecordArticleView(c *gin.Context) {
 func (h *Handler) GetStats(c *gin.Context) {
 	data, err := h.service.GetStats(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "internal_error",
+				"message": err.Error(),
+			},
+		})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data,
+	})
 }
 
 // GetMonthlyTrends handles GET /api/v1/admin/dashboard/monthly-trends
@@ -137,17 +146,34 @@ func (h *Handler) GetMonthlyTrends(c *gin.Context) {
 		if parsed, err := strconv.Atoi(yearStr); err == nil && parsed >= 2000 && parsed <= 2100 {
 			year = parsed
 		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year parameter"})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "invalid_parameter",
+					"message": "invalid year parameter",
+				},
+			})
 			return
 		}
 	}
 
 	data, err := h.service.GetMonthlyTrends(c.Request.Context(), year)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "internal_error",
+				"message": err.Error(),
+			},
+		})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	// Return the array of MonthlyTrendItem in data field to directly match Frontend MonthlyTrendDto[]
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data.Months,
+		"year":    data.Year,
+	})
 }
 
 // GetTopArticlesHandler handles GET /api/v1/admin/dashboard/top-articles
@@ -164,10 +190,21 @@ func (h *Handler) GetTopArticlesHandler(c *gin.Context) {
 
 	data, err := h.service.GetTopArticlesList(c.Request.Context(), limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "internal_error",
+				"message": err.Error(),
+			},
+		})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	// Return the array of TopArticleItem in data to directly match TopArticleDto[]
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data.Articles,
+		"total":   data.Total,
+	})
 }
 
 // GetTopCategoriesHandler handles GET /api/v1/admin/dashboard/top-categories
@@ -175,10 +212,20 @@ func (h *Handler) GetTopArticlesHandler(c *gin.Context) {
 func (h *Handler) GetTopCategoriesHandler(c *gin.Context) {
 	data, err := h.service.GetTopCategoriesDistribution(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "internal_error",
+				"message": err.Error(),
+			},
+		})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data.Categories,
+		"total_categories_count": data.TotalCategoriesCount,
+	})
 }
 
 // GetRecentActivities handles GET /api/v1/admin/dashboard/recent-activities
@@ -186,8 +233,18 @@ func (h *Handler) GetTopCategoriesHandler(c *gin.Context) {
 func (h *Handler) GetRecentActivities(c *gin.Context) {
 	data, err := h.service.GetRecentActivities(c.Request.Context(), 10)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "internal_error",
+				"message": err.Error(),
+			},
+		})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data.Activities,
+		"total":   data.Total,
+	})
 }

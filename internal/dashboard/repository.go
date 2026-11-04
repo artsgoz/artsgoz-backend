@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -275,7 +276,7 @@ func (r *gormRepository) GetMonthlyTraffic(ctx context.Context, monthsBack int) 
 
 // GetMonthlyTrafficByYear returns traffic data grouped by month for a specific year (12 months).
 func (r *gormRepository) GetMonthlyTrafficByYear(ctx context.Context, year int) ([]MonthlyTrendItem, error) {
-	monthNames := []string{"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"}
+	thaiShortMonths := []string{"ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."}
 
 	data := make([]MonthlyTrendItem, 12)
 	for m := 1; m <= 12; m++ {
@@ -287,9 +288,14 @@ func (r *gormRepository) GetMonthlyTrafficByYear(ctx context.Context, year int) 
 			Where("created_at >= ? AND created_at < ?", startOfMonth, endOfMonth).
 			Count(&count).Error
 
+		monthCode := fmt.Sprintf("%d-%02d", year, m)
+		label := fmt.Sprintf("%s %d", thaiShortMonths[m-1], year)
+
 		data[m-1] = MonthlyTrendItem{
-			Month:  monthNames[m-1],
+			Month:  monthCode,
+			Label:  label,
 			Visits: count,
+			Views:  count,
 		}
 	}
 

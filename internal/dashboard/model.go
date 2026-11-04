@@ -169,17 +169,23 @@ type StatsResponse struct {
 	TotalViewsGrowthRate   float64 `json:"total_views_growth_rate"`
 	TotalArticlesCount     int64   `json:"total_articles_count"`
 	PublishedArticlesCount int64   `json:"published_articles_count"`
+	PublishedArticles      int64   `json:"published_articles"`
 	DraftArticlesCount     int64   `json:"draft_articles_count"`
+	DraftArticles          int64   `json:"draft_articles"`
 	ArchivedArticlesCount  int64   `json:"archived_articles_count"`
 	PendingCommentsCount   int64   `json:"pending_comments_count"`
+	PendingComments        int64   `json:"pending_comments"`
 	PendingCommentsGrowth  float64 `json:"pending_comments_growth_rate"`
 	TotalCategoriesCount   int     `json:"total_categories_count"`
+	TotalCategories        int     `json:"total_categories"`
 }
 
 // MonthlyTrendItem represents a single month data point for the trend chart.
 type MonthlyTrendItem struct {
-	Month  string `json:"month"`  // e.g. "JAN", "FEB", ... "DEC"
+	Month  string `json:"month"`  // e.g. "2026-01" or "JAN"
+	Label  string `json:"label"`  // e.g. "ม.ค. 2026"
 	Visits int64  `json:"visits"` // total visits in that month
+	Views  int64  `json:"views"`  // alias for visits (frontend compat)
 }
 
 // MonthlyTrendsResponse is the payload for GET /api/v1/admin/dashboard/monthly-trends

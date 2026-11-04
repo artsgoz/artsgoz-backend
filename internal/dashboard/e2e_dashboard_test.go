@@ -366,10 +366,17 @@ func TestE2E_TC_DASH_001_OverviewMetrics_Invariants(t *testing.T) {
 		t.Fatalf("[TC-DASH-001] expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var res StatsResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+	var envelope struct {
+		Success bool          `json:"success"`
+		Data    StatsResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("[TC-DASH-001] JSON unmarshal error: %v", err)
 	}
+	if !envelope.Success {
+		t.Fatalf("[TC-DASH-001] expected success=true")
+	}
+	res := envelope.Data
 
 	// Verify Mathematical Invariants
 	// 1. Total Articles = Published (2) + Draft (1) + Archived (1) = 4
@@ -471,15 +478,20 @@ func TestE2E_TC_DASH_004_TopCategoriesDistribution(t *testing.T) {
 		t.Fatalf("[TC-DASH-004] expected 200 OK, got %d", rec.Code)
 	}
 
-	var res TopCategoriesResponse
-	_ = json.Unmarshal(rec.Body.Bytes(), &res)
+	var envelope struct {
+		Success bool                   `json:"success"`
+		Data    []CategoryDistribution `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("[TC-DASH-004] unmarshal error: %v", err)
+	}
 
-	if len(res.Categories) == 0 {
+	if len(envelope.Data) == 0 {
 		t.Fatalf("[TC-DASH-004] expected categories list, got 0")
 	}
 
 	var sumPct int
-	for _, c := range res.Categories {
+	for _, c := range envelope.Data {
 		sumPct += c.Pct
 		if c.BarColor == "" || c.DotColor == "" {
 			t.Errorf("[TC-DASH-004] category %s missing chart color palette", c.Name)
@@ -538,24 +550,27 @@ func TestE2E_TC_ACT_001_RecentActivities_Admin_Descending(t *testing.T) {
 		t.Fatalf("[TC-ACT-001] expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var res RecentActivitiesResponse
-	_ = json.Unmarshal(rec.Body.Bytes(), &res)
+	var envelope struct {
+		Success bool                    `json:"success"`
+		Data    []activity.ActivityItem `json:"data"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &envelope)
 
-	if len(res.Activities) < 2 {
-		t.Fatalf("[TC-ACT-001] expected at least 2 activities, got %d", len(res.Activities))
+	if len(envelope.Data) < 2 {
+		t.Fatalf("[TC-ACT-001] expected at least 2 activities, got %d", len(envelope.Data))
 	}
 
 	// Verify descending order by CreatedAt
-	for i := 0; i < len(res.Activities)-1; i++ {
-		curr := res.Activities[i].CreatedAt
-		next := res.Activities[i+1].CreatedAt
+	for i := 0; i < len(envelope.Data)-1; i++ {
+		curr := envelope.Data[i].CreatedAt
+		next := envelope.Data[i+1].CreatedAt
 		if curr.Before(next) {
 			t.Errorf("[TC-ACT-001] activities not ordered descending: %v was before %v", curr, next)
 		}
 	}
 
 	// Verify essential audit fields
-	first := res.Activities[0]
+	first := envelope.Data[0]
 	if first.Action == "" || first.EntityType == "" || first.EntityID == "" {
 		t.Errorf("[TC-ACT-001] missing essential audit trail fields: action=%q, entity_type=%q, entity_id=%q",
 			first.Action, first.EntityType, first.EntityID)
