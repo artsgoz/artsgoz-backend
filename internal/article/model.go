@@ -75,6 +75,7 @@ func (ActivityLog) TableName() string {
 }
 
 type Article struct {
+	Success            bool           `gorm:"-" json:"success,omitempty"`
 	ID                 string         `gorm:"type:uuid;primaryKey" json:"id"`
 	Slug               string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"slug"`
 	Title              string         `gorm:"type:varchar(500);not null" json:"title"`

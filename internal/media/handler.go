@@ -58,7 +58,19 @@ func (h *Handler) UploadImage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"url":       result.URL,
+			"file_name": fileHeader.Filename,
+		},
+		"url":               result.URL,
+		"format":            result.Format,
+		"width":             result.Width,
+		"height":            result.Height,
+		"size":              result.Size,
+		"original_filename": result.OriginalFilename,
+	})
 }
 
 func writeError(c *gin.Context, status int, code, message string) {

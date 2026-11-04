@@ -68,7 +68,13 @@ func TestE2E_TC_ALC_001_WriterCreateDraftFullFields(t *testing.T) {
 	}
 
 	var res Article
-	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+	var envelope struct {
+		Success bool    `json:"success"`
+		Data    Article `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err == nil && envelope.Data.ID != "" {
+		res = envelope.Data
+	} else if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("[TC-ALC-001] JSON unmarshal error: %v", err)
 	}
 
@@ -350,7 +356,15 @@ func TestE2E_TC_RBAC_005_EditorCanUpdateAnyArticle(t *testing.T) {
 	}
 
 	var updated Article
-	_ = json.Unmarshal(recEdit.Body.Bytes(), &updated)
+	var envelopeEdit struct {
+		Success bool    `json:"success"`
+		Data    Article `json:"data"`
+	}
+	if err := json.Unmarshal(recEdit.Body.Bytes(), &envelopeEdit); err == nil && envelopeEdit.Data.ID != "" {
+		updated = envelopeEdit.Data
+	} else {
+		_ = json.Unmarshal(recEdit.Body.Bytes(), &updated)
+	}
 	if updated.Title != "บทความเขียนโดย Writer (ได้รับการรีวิวโดย Editor แล้ว)" {
 		t.Errorf("[TC-RBAC-005] title mismatch: %q", updated.Title)
 	}
@@ -397,7 +411,15 @@ func TestE2E_TC_PUB_001_EditorPublishArticle(t *testing.T) {
 	}
 
 	var published Article
-	_ = json.Unmarshal(recPub.Body.Bytes(), &published)
+	var envelopePub struct {
+		Success bool    `json:"success"`
+		Data    Article `json:"data"`
+	}
+	if err := json.Unmarshal(recPub.Body.Bytes(), &envelopePub); err == nil && envelopePub.Data.ID != "" {
+		published = envelopePub.Data
+	} else {
+		_ = json.Unmarshal(recPub.Body.Bytes(), &published)
+	}
 	if published.Status != StatusPublished {
 		t.Errorf("[TC-PUB-001] expected status 'published', got %q", published.Status)
 	}

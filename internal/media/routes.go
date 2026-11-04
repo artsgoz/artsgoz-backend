@@ -7,4 +7,9 @@ func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
 	{
 		upload.POST("/image", handler.UploadImage)
 	}
+
+	adminMedia := router.Group("/admin/media")
+	{
+		adminMedia.POST("/upload", handler.UploadImage)
+	}
 }
