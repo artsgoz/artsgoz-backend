@@ -15,7 +15,8 @@ type UserRepository interface {
 	CreateUser(ctx context.Context, user *User) error
 	GetAllUsers() ([]*User, error)
 	UpdateRole(id string, role string) error
-	UpdateProfile(id string, email string) (*User, error)
+	UpdateProfile(id string, username string, email string, avatarURL string) (*User, error)
+	UpdatePassword(id string, passwordHash string) error
 }
 
 type userRepository struct {
@@ -87,10 +88,18 @@ func (r *userRepository) UpdateRole(id string, role string) error {
 	return nil
 }
 
-func (r *userRepository) UpdateProfile(id string, email string) (*User, error) {
-	result := r.db.Model(&User{}).Where("id = ?", id).Updates(map[string]any{
-		"email": email, "updated_at": time.Now(),
-	})
+func (r *userRepository) UpdateProfile(id string, username string, email string, avatarURL string) (*User, error) {
+	updates := map[string]any{"updated_at": time.Now()}
+	if username != "" {
+		updates["username"] = username
+	}
+	if email != "" {
+		updates["email"] = email
+	}
+	if avatarURL != "" {
+		updates["avatar_url"] = avatarURL
+	}
+	result := r.db.Model(&User{}).Where("id = ?", id).Updates(updates)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -98,4 +107,18 @@ func (r *userRepository) UpdateProfile(id string, email string) (*User, error) {
 		return nil, errors.New("user not found")
 	}
 	return r.FindByID(context.Background(), id)
+}
+
+func (r *userRepository) UpdatePassword(id string, passwordHash string) error {
+	result := r.db.Model(&User{}).Where("id = ?", id).Updates(map[string]any{
+		"password_hash": passwordHash,
+		"updated_at":    time.Now(),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user not found")
+	}
+	return nil
 }

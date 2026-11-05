@@ -68,7 +68,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*user.User
 		Username:     username,
 		Email:        email,
 		PasswordHash: string(hashedPassword),
-		Role:         "student",
+		Role:         "member",
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}

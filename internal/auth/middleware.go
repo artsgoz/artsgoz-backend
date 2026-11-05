@@ -12,18 +12,30 @@ func Middleware(service *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if header == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   gin.H{"code": "UNAUTHORIZED", "message": "authentication required"},
+				"message": "authentication required",
+			})
 			return
 		}
 		if !strings.HasPrefix(header, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization format"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   gin.H{"code": "UNAUTHORIZED", "message": "invalid authorization format"},
+				"message": "invalid authorization format",
+			})
 			return
 		}
 
 		tokenString := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		claims, err := service.ValidateToken(tokenString)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   gin.H{"code": "UNAUTHORIZED", "message": "invalid or expired token"},
+				"message": "invalid or expired token",
+			})
 			return
 		}
 

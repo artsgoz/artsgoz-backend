@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/mail"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AdminService interface {
@@ -12,6 +14,7 @@ type AdminService interface {
 	UpdateUserRole(id string, role string) error
 	GetProfile(id string) (*User, error)
 	UpdateProfile(id string, req UpdateProfileRequest) (*User, error)
+	ChangePassword(id string, req ChangePasswordRequest) error
 }
 
 type adminService struct {
@@ -29,8 +32,9 @@ func (u *adminService) GetAllUsers() ([]*User, error) {
 }
 
 func (u *adminService) UpdateUserRole(id string, role string) error {
-	if role != "student" && role != "teacher" && role != "club-member" && role != "admin" {
-		return errors.New("invalid role (must be student, teacher, club-member, or admin)")
+	role = strings.TrimSpace(role)
+	if role == "" {
+		return errors.New("role is required")
 	}
 	return u.userRepo.UpdateRole(id, role)
 }
@@ -53,12 +57,49 @@ func (u *adminService) UpdateProfile(id string, req UpdateProfileRequest) (*User
 	if id == "" {
 		return nil, errors.New("user ID is required")
 	}
+	req.Username = strings.TrimSpace(req.Username)
 	req.Email = strings.TrimSpace(req.Email)
-	if req.Email == "" {
-		return nil, errors.New("email is required")
+	req.AvatarURL = strings.TrimSpace(req.AvatarURL)
+
+	if req.Username == "" && req.Email == "" && req.AvatarURL == "" {
+		return nil, errors.New("at least one field (username, email, or avatar_url) must be provided")
 	}
-	if _, err := mail.ParseAddress(req.Email); err != nil {
-		return nil, errors.New("invalid email format")
+
+	if req.Email != "" {
+		if _, err := mail.ParseAddress(req.Email); err != nil {
+			return nil, errors.New("invalid email format")
+		}
 	}
-	return u.userRepo.UpdateProfile(id, req.Email)
+	return u.userRepo.UpdateProfile(id, req.Username, req.Email, req.AvatarURL)
+}
+
+func (u *adminService) ChangePassword(id string, req ChangePasswordRequest) error {
+	if id == "" {
+		return errors.New("user ID is required")
+	}
+	if req.CurrentPassword == "" {
+		return errors.New("current password is required")
+	}
+	if len(req.NewPassword) < 6 {
+		return errors.New("new password must be at least 6 characters")
+	}
+
+	user, err := u.userRepo.FindByID(context.Background(), id)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return errors.New("incorrect current password")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errors.New("failed to encrypt password")
+	}
+
+	return u.userRepo.UpdatePassword(id, string(hashedPassword))
 }
