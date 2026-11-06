@@ -1,5 +1,5 @@
 # Build from the repository root:
-# docker build -f infra/Dockerfile -t artsgoz-backend .
+# docker build -t artsgoz-backend .
 FROM golang:1.25-alpine AS builder
 WORKDIR /app
 
@@ -17,7 +17,5 @@ WORKDIR /app
 
 COPY --from=builder /app/main ./main
 
-ENV PORT=8080
 USER app
-EXPOSE 8080
 CMD ["./main"]
