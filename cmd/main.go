@@ -1,62 +1,27 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
-	firebase "firebase.google.com/go/v4"
 	"github.com/gin-gonic/gin"
-	"google.golang.org/api/option"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/config"
+	"github.com/artsgoz/artsgoz-backend/internal/auth"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
 
 func main() {
-	ctx := context.Background()
-
 	// 1. Load local configuration (if present)
 	if err := config.Load(); err != nil {
 		log.Printf("Warning: failed to load local configuration: %v. Will rely on environment variables.", err)
 	}
 
-	// 2. Connect to Firebase (Auth only — user data is now stored in PostgreSQL)
-	var opt option.ClientOption
-	if _, err := os.Stat("firebase-service-account.json"); err == nil {
-		opt = option.WithCredentialsFile("firebase-service-account.json")
-	}
-
-	projectID := os.Getenv("GCP_PROJECT_ID")
-	if projectID == "" {
-		projectID = "account-test-c25f0"
-	}
-
-	firebaseConfig := &firebase.Config{
-		ProjectID: projectID,
-	}
-
-	var firebaseApp *firebase.App
-	var err error
-	if opt != nil {
-		firebaseApp, err = firebase.NewApp(ctx, firebaseConfig, opt)
-	} else {
-		firebaseApp, err = firebase.NewApp(ctx, firebaseConfig)
-	}
-	if err != nil {
-		log.Fatalf("Failed to init Firebase: %v", err)
-	}
-
-	// 3. Firebase Auth Client
-	firebaseAuth, err := firebaseApp.Auth(ctx)
-	if err != nil {
-		log.Fatalf("Failed to init Firebase Auth: %v", err)
-	}
-
-	// 4. Connect to PostgreSQL
+	// 2. Connect to PostgreSQL
 	db, err := gorm.Open(postgres.Open(config.DatabaseURL()), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
@@ -70,14 +35,27 @@ func main() {
 	defer sqlDB.Close()
 	log.Println("Connected to PostgreSQL successfully")
 
-	// 5. Initialize Gin Engine
+	// 3. Auto Migrate Database Tables
+	if err := db.AutoMigrate(&user.User{}); err != nil {
+		log.Printf("Warning: AutoMigrate failed: %v", err)
+	} else {
+		log.Println("Database AutoMigrate executed successfully")
+	}
+
+	// 4. Initialize Gin Engine
 	app := gin.Default()
 
-	// 5.1 CORS — Allow Frontend (Next.js) to access the API
+	// 4.1 Allow frontend access through CORS
 	app.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "http://localhost:3001")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		origin := c.GetHeader("Origin")
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+		} else {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Credentials", "true")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
@@ -85,17 +63,22 @@ func main() {
 		c.Next()
 	})
 
-	// 6. Register User Module Routes under api prefix
+	// 5. Wire authentication and user modules under the API prefix
 	api := app.Group("/api/v1")
-	user.Register(api, db, firebaseAuth)
+	userRepo := user.NewUserRepository(db)
+	jwtManager := auth.NewJWTManager(config.JWTSecret(), 24*time.Hour)
+	authService := auth.NewService(userRepo, jwtManager)
 
-	// 7. Start Server
+	auth.Register(api, authService)
+	user.Register(api, db, auth.Middleware(authService))
+
+	// 6. Start Server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
-	log.Printf("Server starting on port %s...", port)
+	log.Printf("Server is running on port %s", port)
 	if err := app.Run(":" + port); err != nil {
-		log.Fatalf("listen: %v", err)
+		log.Fatalf("Failed to run server: %v", err)
 	}
 }
