@@ -1,7 +1,12 @@
 package user
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,6 +72,7 @@ func (h *AdminHandler) GetProfile(c *gin.Context) {
 		"username":   user.Username,
 		"email":      user.Email,
 		"role":       user.Role,
+		"avatar_url": user.AvatarURL,
 		"created_at": user.CreatedAt,
 		"updated_at": user.UpdatedAt,
 	})
@@ -97,7 +103,80 @@ func (h *AdminHandler) UpdateProfile(c *gin.Context) {
 		"username":   user.Username,
 		"email":      user.Email,
 		"role":       user.Role,
+		"avatar_url": user.AvatarURL,
 		"updated_at": user.UpdatedAt,
+	})
+}
+
+func (h *AdminHandler) ChangePassword(c *gin.Context) {
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+
+	if err := h.adminService.ChangePassword(userID, req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "password updated successfully"})
+}
+
+func (h *AdminHandler) UploadAvatar(c *gin.Context) {
+	userID := getUserIDFromContext(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "avatar file is required"})
+		return
+	}
+
+	// Validate size (max 5MB)
+	if file.Size > 5*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file size exceeds 5MB limit"})
+		return
+	}
+
+	// Validate extension
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" && ext != ".gif" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid image format. Allowed: jpg, jpeg, png, webp, gif"})
+		return
+	}
+
+	uploadDir := "./uploads/avatars"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upload directory"})
+		return
+	}
+
+	filename := fmt.Sprintf("%s_%d%s", userID, time.Now().UnixNano(), ext)
+	dst := filepath.Join(uploadDir, filename)
+
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save avatar: " + err.Error()})
+		return
+	}
+
+	avatarURL := fmt.Sprintf("/uploads/avatars/%s", filename)
+
+	// Update user's avatar_url in database
+	_, _ = h.adminService.UpdateProfile(userID, UpdateProfileRequest{AvatarURL: avatarURL})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "avatar uploaded successfully",
+		"avatar_url": avatarURL,
 	})
 }
 

@@ -1,7 +1,14 @@
 package user
 
 type UpdateProfileRequest struct {
-	Email string `json:"email"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=6"`
 }
 
 type UpdateRoleRequest struct {

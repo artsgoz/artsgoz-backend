@@ -45,11 +45,20 @@ func main() {
 	// 4. Initialize Gin Engine
 	app := gin.Default()
 
+	// Ensure uploads directory exists and mount static route
+	_ = os.MkdirAll("uploads/avatars", 0755)
+	app.Static("/uploads", "./uploads")
+
 	// 4.1 Allow frontend access through CORS
 	app.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "http://localhost:3001")
+		origin := c.Request.Header.Get("Origin")
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+		} else {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
