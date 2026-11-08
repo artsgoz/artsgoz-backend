@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -24,6 +26,7 @@ type Config struct {
 	StorageBucket       string
 	FirebaseCredentials string
 	FirebaseProjectID   string
+	CORSAllowedOrigins  []string
 }
 
 // Load reads an optional .env.local file and then resolves configuration from
@@ -51,6 +54,11 @@ func Load() (Config, error) {
 		FirebaseCredentials: envOrDefault("FIREBASE_CREDENTIALS", "firebase-service-account.json"),
 		FirebaseProjectID:   envOrDefault("FIREBASE_PROJECT_ID", os.Getenv("GCP_PROJECT_ID")),
 	}
+	origins, err := parseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.CORSAllowedOrigins = origins
 	if cfg.DBHost == "" || cfg.DBUser == "" || cfg.DBName == "" {
 		return Config{}, fmt.Errorf("config: DB_HOST, DB_USER, and DB_NAME are required")
 	}
@@ -85,4 +93,26 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func parseCORSOrigins(raw string) ([]string, error) {
+	origins := []string{}
+	seen := make(map[string]bool)
+	for _, value := range strings.Split(raw, ",") {
+		origin := strings.TrimSpace(value)
+		if origin == "" {
+			continue
+		}
+		parsed, err := url.Parse(origin)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" ||
+			strings.Contains(parsed.Host, "*") || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+			return nil, fmt.Errorf("config: CORS_ALLOWED_ORIGINS must contain comma-separated http/https origins without paths or wildcards")
+		}
+		origin = parsed.Scheme + "://" + strings.ToLower(parsed.Host)
+		if !seen[origin] {
+			origins = append(origins, origin)
+			seen[origin] = true
+		}
+	}
+	return origins, nil
 }

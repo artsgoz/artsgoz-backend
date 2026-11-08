@@ -7,10 +7,10 @@ import (
 )
 
 // New creates the Gin engine. Feature routes are registered by their modules.
-func New(mode string) *gin.Engine {
+func New(mode string, allowedOrigins ...string) *gin.Engine {
 	gin.SetMode(mode)
 	engine := gin.New()
-	registerMiddleware(engine)
+	registerMiddleware(engine, allowedOrigins)
 
 	engine.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

@@ -71,7 +71,7 @@ func Run() error {
 		return fmt.Errorf("auto-migrate: %w", err)
 	}
 
-	engine := server.New(cfg.GinMode)
+	engine := server.New(cfg.GinMode, cfg.CORSAllowedOrigins...)
 	if err := os.MkdirAll(filepath.Join(cfg.UploadDir, "avatars"), 0755); err != nil {
 		return err
 	}

@@ -9,18 +9,27 @@ import (
 
 const requestIDKey = "request_id"
 
-func registerMiddleware(engine *gin.Engine) {
-	engine.Use(corsMiddleware())
+func registerMiddleware(engine *gin.Engine, allowedOrigins []string) {
+	engine.Use(corsMiddleware(allowedOrigins))
 	engine.Use(requestID())
 	engine.Use(gin.Logger())
 	engine.Use(gin.Recovery())
 	engine.Use(errorHandler())
 }
 
-func corsMiddleware() gin.HandlerFunc {
+func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]bool, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		allowed[origin] = true
+	}
 	return func(c *gin.Context) {
+		c.Writer.Header().Add("Vary", "Origin")
 		origin := c.GetHeader("Origin")
 		if origin != "" {
+			if !allowed[origin] {
+				c.AbortWithStatusJSON(http.StatusForbidden, errorResponse("cors_origin", "origin is not allowed"))
+				return
+			}
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
@@ -29,6 +38,8 @@ func corsMiddleware() gin.HandlerFunc {
 		}
 
 		if c.Request.Method == http.MethodOptions {
+			c.Writer.Header().Add("Vary", "Access-Control-Request-Method")
+			c.Writer.Header().Add("Vary", "Access-Control-Request-Headers")
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
