@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/config"
+	"github.com/artsgoz/artsgoz-backend/internal/article"
+	"github.com/artsgoz/artsgoz-backend/internal/media"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
 
@@ -78,14 +80,40 @@ func main() {
 	defer sqlDB.Close()
 	log.Println("Connected to PostgreSQL successfully")
 
-	// 5. Initialize Gin Engine
+	// 5. Auto Migrate Database Tables
+	if err := db.AutoMigrate(
+		&user.User{},
+		&article.Article{},
+		&article.Category{},
+		&article.ActivityLog{},
+	); err != nil {
+		log.Printf("Warning: AutoMigrate: %v", err)
+	} else {
+		log.Println("Database AutoMigrate executed successfully")
+	}
+
+	// 6. Initialize Gin Engine
 	app := gin.Default()
 
-	// 5.1 CORS — Allow Frontend (Next.js) to access the API
+	// Upload directory & static file serving
+	uploadDir := os.Getenv("UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = "uploads"
+	}
+	_ = os.MkdirAll(uploadDir, 0755)
+	app.Static("/uploads", uploadDir)
+
+	// 6.1 CORS — Allow Frontend to access the API
 	app.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "http://localhost:3001")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		origin := c.GetHeader("Origin")
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+		} else {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Credentials", "true")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
@@ -93,11 +121,35 @@ func main() {
 		c.Next()
 	})
 
-	// 6. Register User Module Routes under api prefix
-	api := app.Group("/api/v1")
-	user.Register(api, db, firebaseAuth)
+	// 7. Register Module Routes under api and api/v1 prefixes
+	api := app.Group("/api")
+	apiV1 := app.Group("/api/v1")
 
-	// 7. Start Server
+	// User module
+	user.Register(apiV1, db, firebaseAuth)
+
+	// Article module
+	articleRepo := article.NewGormRepository(db)
+	articleSvc := article.NewService(articleRepo)
+	articleHandler := article.NewHandler(articleSvc)
+	article.RegisterRoutes(api, articleHandler)
+	article.RegisterRoutes(apiV1, articleHandler)
+
+	// Media module
+	uploadBaseURL := os.Getenv("UPLOAD_BASE_URL")
+	if uploadBaseURL == "" {
+		uploadBaseURL = "/uploads"
+	}
+	var storageProvider media.StorageProvider = media.NewLocalStorageProvider(uploadDir, uploadBaseURL)
+	if bucket := os.Getenv("STORAGE_BUCKET"); bucket != "" {
+		storageProvider = media.NewCloudStorageProvider(bucket, "", storageProvider)
+	}
+	mediaSvc := media.NewService(storageProvider)
+	mediaHandler := media.NewHandler(mediaSvc)
+	media.RegisterRoutes(api, mediaHandler)
+	media.RegisterRoutes(apiV1, mediaHandler)
+
+	// 8. Start Server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
