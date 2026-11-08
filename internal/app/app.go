@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -58,18 +57,6 @@ func Run() error {
 			log.Printf("close database: %v", err)
 		}
 	}()
-
-	// Auto-migrate tables
-	if err := database.DB.AutoMigrate(
-		&user.User{},
-		&article.Article{}, &article.Category{}, &article.ActivityLog{}, &article.Tag{},
-		&community.FAQ{}, &community.Contact{}, &community.Review{},
-		&comment.Comment{},
-		&activity.ActivityLog{},
-		&dashboard.TrafficRecord{},
-	); err != nil {
-		return fmt.Errorf("auto-migrate: %w", err)
-	}
 
 	engine := server.New(cfg.GinMode, cfg.CORSAllowedOrigins...)
 	if err := os.MkdirAll(filepath.Join(cfg.UploadDir, "avatars"), 0755); err != nil {

@@ -32,7 +32,7 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	database, err := gorm.Open(gormpostgres.Open(dsn), &gorm.Config{TranslateError: true})
+	database, err := gorm.Open(gormpostgres.Open(dsn), &gorm.Config{TranslateError: true, DisableAutomaticPing: true})
 	if err != nil {
 		return nil, fmt.Errorf("postgres: connect: %w", err)
 	}

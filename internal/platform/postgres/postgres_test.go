@@ -1,6 +1,8 @@
 package postgres_test
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
@@ -27,5 +29,17 @@ func TestConnectionURLRejectsIncompleteConfig(t *testing.T) {
 
 	if _, err := postgres.ConnectionURL(postgres.Config{Host: "localhost"}); err == nil {
 		t.Fatal("ConnectionURL() error = nil, want an error")
+	}
+}
+
+func TestNewRespectsCanceledStartupContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := postgres.New(ctx, postgres.Config{
+		Host: "unreachable.invalid", Port: "5432", User: "test", Password: "test",
+		Database: "test", SSLMode: "disable",
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want canceled startup", err)
 	}
 }
