@@ -31,7 +31,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
-	if item.ID == "" || item.Email != "person@example.com" || item.PasswordHash == "" || item.CreatedAt.IsZero() {
+	if item.ID == "" || item.Username == "" || item.Role != "member" || item.UpdatedAt.IsZero() || item.Email != "person@example.com" || item.PasswordHash == "" || item.CreatedAt.IsZero() {
 		t.Fatalf("Register() user = %#v", item)
 	}
 	if repository.created == nil || repository.created.ID != item.ID {

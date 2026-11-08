@@ -1,72 +1,30 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 
-	firebase "firebase.google.com/go/v4"
 	"github.com/gin-gonic/gin"
-	"google.golang.org/api/option"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/config"
 	"github.com/artsgoz/artsgoz-backend/internal/article"
+	"github.com/artsgoz/artsgoz-backend/internal/auth"
 	"github.com/artsgoz/artsgoz-backend/internal/media"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
 
 func main() {
-	ctx := context.Background()
-
 	// 1. Load local configuration (if present)
 	if err := config.Load(); err != nil {
 		log.Printf("Warning: failed to load local configuration: %v. Will rely on environment variables.", err)
 	}
 
-	// 2. Connect to Firebase (Auth only — user data is now stored in PostgreSQL)
-	var opt option.ClientOption
-	if raw := os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON"); raw != "" {
-		opt = option.WithAuthCredentialsJSON(
-			option.ServiceAccount,
-			[]byte(raw),
-		)
-	} else if _, err := os.Stat("firebase-service-account.json"); err == nil {
-		opt = option.WithAuthCredentialsFile(
-			option.ServiceAccount,
-			"firebase-service-account.json",
-		)
-	}
-
-	projectID := os.Getenv("GCP_PROJECT_ID")
-	if projectID == "" {
-		projectID = "artsgoz-artsgoz-web-develop"
-	}
-
-	firebaseConfig := &firebase.Config{
-		ProjectID: projectID,
-	}
-
-	var firebaseApp *firebase.App
-	var err error
-	if opt != nil {
-		firebaseApp, err = firebase.NewApp(ctx, firebaseConfig, opt)
-	} else {
-		firebaseApp, err = firebase.NewApp(ctx, firebaseConfig)
-	}
-	if err != nil {
-		log.Fatalf("Failed to init Firebase: %v", err)
-	}
-
-	// 3. Firebase Auth Client
-	firebaseAuth, err := firebaseApp.Auth(ctx)
-	if err != nil {
-		log.Fatalf("Failed to init Firebase Auth: %v", err)
-	}
-
-	// 4. Connect to PostgreSQL
+	// 2. Connect to PostgreSQL
 	db, err := gorm.Open(postgres.Open(config.DatabaseURL()), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
@@ -80,30 +38,25 @@ func main() {
 	defer sqlDB.Close()
 	log.Println("Connected to PostgreSQL successfully")
 
-	// 5. Auto Migrate Database Tables
-	if err := db.AutoMigrate(
-		&user.User{},
-		&article.Article{},
-		&article.Category{},
-		&article.ActivityLog{},
-	); err != nil {
-		log.Printf("Warning: AutoMigrate: %v", err)
+	// 3. Auto Migrate Database Tables
+	if err := db.AutoMigrate(&user.User{}, &article.Article{}, &article.Category{}, &article.ActivityLog{}); err != nil {
+		log.Printf("Warning: AutoMigrate failed: %v", err)
 	} else {
 		log.Println("Database AutoMigrate executed successfully")
 	}
 
-	// 6. Initialize Gin Engine
+	// 4. Initialize Gin Engine
 	app := gin.Default()
 
-	// Upload directory & static file serving
+	// Ensure uploads directory exists and mount static route
 	uploadDir := os.Getenv("UPLOAD_DIR")
 	if uploadDir == "" {
 		uploadDir = "uploads"
 	}
-	_ = os.MkdirAll(uploadDir, 0755)
+	_ = os.MkdirAll(filepath.Join(uploadDir, "avatars"), 0755)
 	app.Static("/uploads", uploadDir)
 
-	// 6.1 CORS — Allow Frontend to access the API
+	// 4.1 Allow frontend access through CORS
 	app.Use(func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 		if origin != "" {
@@ -121,21 +74,30 @@ func main() {
 		c.Next()
 	})
 
-	// 7. Register Module Routes under api and api/v1 prefixes
+	// 5. Wire authentication and user modules under the API prefix
 	api := app.Group("/api")
 	apiV1 := app.Group("/api/v1")
+	userRepo := user.NewUserRepository(db)
+	jwtManager := auth.NewJWTManager(config.JWTSecret(), 24*time.Hour)
 
-	// User module
-	user.Register(apiV1, db, firebaseAuth)
+	// Initialize Firebase Auth Client (if credentials present)
+	firebaseClient, err := auth.InitFirebase(config.FirebaseCredentialsPath(), config.FirebaseProjectID())
+	if err != nil {
+		log.Printf("[Firebase] Notice: Firebase Auth not initialized: %v (running with JWT only)", err)
+	}
 
-	// Article module
-	articleRepo := article.NewGormRepository(db)
-	articleSvc := article.NewService(articleRepo)
-	articleHandler := article.NewHandler(articleSvc)
+	authService := auth.NewService(userRepo, jwtManager, firebaseClient)
+
+	auth.Register(apiV1, authService)
+	user.Register(apiV1, db, auth.Middleware(authService))
+	userHandler := user.NewHandler(user.NewService(userRepo))
+	user.RegisterRoutes(api, userHandler)
+	user.RegisterRoutes(apiV1, userHandler)
+
+	articleHandler := article.NewHandler(article.NewService(article.NewGormRepository(db)))
 	article.RegisterRoutes(api, articleHandler)
 	article.RegisterRoutes(apiV1, articleHandler)
 
-	// Media module
 	uploadBaseURL := os.Getenv("UPLOAD_BASE_URL")
 	if uploadBaseURL == "" {
 		uploadBaseURL = "/uploads"
@@ -144,18 +106,17 @@ func main() {
 	if bucket := os.Getenv("STORAGE_BUCKET"); bucket != "" {
 		storageProvider = media.NewCloudStorageProvider(bucket, "", storageProvider)
 	}
-	mediaSvc := media.NewService(storageProvider)
-	mediaHandler := media.NewHandler(mediaSvc)
+	mediaHandler := media.NewHandler(media.NewService(storageProvider))
 	media.RegisterRoutes(api, mediaHandler)
 	media.RegisterRoutes(apiV1, mediaHandler)
 
-	// 8. Start Server
+	// 6. Start Server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
-	log.Printf("Server starting on port %s...", port)
+	log.Printf("Server is running on port %s", port)
 	if err := app.Run(":" + port); err != nil {
-		log.Fatalf("listen: %v", err)
+		log.Fatalf("Failed to run server: %v", err)
 	}
 }

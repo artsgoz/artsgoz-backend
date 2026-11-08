@@ -1,20 +1,16 @@
 package user
 
-type LoginRequest struct {
-	IDToken string `json:"id_token"`
-}
-
-type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
-}
-
-type LoginResponse struct {
-	UID  string `json:"uid"`
-	Role string `json:"role"`
-}
-
 type UpdateProfileRequest struct {
-	Email string `json:"email"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+type UpdateRoleRequest struct {
+	Role string `json:"role" binding:"required"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=6"`
 }

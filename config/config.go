@@ -29,3 +29,23 @@ func DatabaseURL() string {
 	}
 	return u.String()
 }
+
+func JWTSecret() string {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		return "artsgoz-default-secret-key-change-in-production"
+	}
+	return secret
+}
+
+func FirebaseCredentialsPath() string {
+	path := os.Getenv("FIREBASE_CREDENTIALS")
+	if path == "" {
+		return "firebase-service-account.json"
+	}
+	return path
+}
+
+func FirebaseProjectID() string {
+	return os.Getenv("FIREBASE_PROJECT_ID")
+}

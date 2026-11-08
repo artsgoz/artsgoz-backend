@@ -9,7 +9,7 @@
 //	go run ./cmd/migrate goto <version>    # migrate up or down to a specific version
 //
 // Database settings are read through the same configuration path as the API.
-// DATABASE_URL is read from the environment or .env.local.
+// Database settings are read from the environment or .env.local.
 // Existing environment variables take precedence.
 package main
 
@@ -27,7 +27,6 @@ import (
 
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
 	platformpostgres "github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
-	"github.com/artsgoz/artsgoz-backend/config"
 )
 
 func main() {
@@ -128,7 +127,7 @@ func printVersion(m *migrate.Migrate) {
 		log.Fatalf("version: %v", err)
 	}
 	if dirty {
-		fmt.Printf("version: %d (DIRTY — last migration failed mid-way; use `force` after manual cleanup)\n", v)
+		fmt.Printf("version: %d (DIRTY - last migration failed midway; use `force` after manual cleanup)\n", v)
 		os.Exit(1)
 	}
 	fmt.Printf("version: %d\n", v)

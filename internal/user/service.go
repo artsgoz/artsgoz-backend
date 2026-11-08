@@ -47,8 +47,11 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (User, erro
 	if err != nil {
 		return User{}, fmt.Errorf("hash password: %w", err)
 	}
+	id := uuid.NewString()
+	now := time.Now().UTC()
 	item := User{
-		ID: uuid.NewString(), Email: email, PasswordHash: string(passwordHash), CreatedAt: time.Now().UTC(),
+		ID: id, Username: id, Email: email, PasswordHash: string(passwordHash),
+		Role: "member", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.repository.CreateUser(ctx, &item); err != nil {
 		return User{}, err
