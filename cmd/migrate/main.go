@@ -9,6 +9,8 @@
 //	go run ./cmd/migrate goto <version>    # migrate up or down to a specific version
 //
 // Database settings are read through the same configuration path as the API.
+// DATABASE_URL is read from the environment or .env.local.
+// Existing environment variables take precedence.
 package main
 
 import (
@@ -25,6 +27,7 @@ import (
 
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
 	platformpostgres "github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
+	"github.com/artsgoz/artsgoz-backend/config"
 )
 
 func main() {
