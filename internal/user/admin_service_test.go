@@ -2,11 +2,11 @@ package user_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/artsgoz/artsgoz-backend/internal/user"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type mockUserRepository struct {
@@ -176,44 +176,33 @@ func TestAdminService_UpdateProfile(t *testing.T) {
 
 func TestAdminService_ChangePassword(t *testing.T) {
 	repo := newMockUserRepository()
-	adminSvc := user.NewAdminService(repo)
-
-	// Setup user with hashed password
-	hashed, _ := bcrypt.GenerateFromPassword([]byte("oldpassword123"), bcrypt.DefaultCost)
-	repo.users["u1"] = &user.User{
-		ID:           "u1",
-		Username:     "member1",
-		PasswordHash: string(hashed),
+	repo.users["u1"] = &user.User{ID: "u1", PasswordHash: "legacy-hash"}
+	svc := user.NewAdminService(repo)
+	err := svc.ChangePassword("u1", user.ChangePasswordRequest{NewPassword: "newpassword"})
+	if !errors.Is(err, user.ErrFirebaseCredentialsManaged) {
+		t.Fatalf("error = %v", err)
 	}
-
-	// 1. Success change password
-	err := adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
-		CurrentPassword: "oldpassword123",
-		NewPassword:     "newpassword456",
-	})
-	if err != nil {
-		t.Fatalf("unexpected change password error: %v", err)
+	if repo.users["u1"].PasswordHash != "legacy-hash" {
+		t.Fatal("legacy hash was changed")
 	}
-	// Verify new password works with bcrypt
-	if err := bcrypt.CompareHashAndPassword([]byte(repo.users["u1"].PasswordHash), []byte("newpassword456")); err != nil {
-		t.Errorf("failed to verify new password: %v", err)
-	}
+}
 
-	// 2. Incorrect current password
-	err = adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
-		CurrentPassword: "wrongpassword",
-		NewPassword:     "anothernew123",
-	})
-	if err == nil {
-		t.Fatal("expected error for wrong current password, got nil")
+func TestAdminService_EmailManagedByFirebase(t *testing.T) {
+	repo := newMockUserRepository()
+	repo.users["u1"] = &user.User{ID: "u1", Email: "old@example.com"}
+	svc := user.NewAdminService(repo)
+	_, err := svc.UpdateProfile("u1", user.UpdateProfileRequest{Email: "new@example.com"})
+	if !errors.Is(err, user.ErrFirebaseCredentialsManaged) {
+		t.Fatalf("error = %v", err)
 	}
+}
 
-	// 3. New password too short
-	err = adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
-		CurrentPassword: "newpassword456",
-		NewPassword:     "123",
-	})
-	if err == nil {
-		t.Fatal("expected error for short new password, got nil")
+func TestAdminService_UnchangedEmailAllowsProfileUpdate(t *testing.T) {
+	repo := newMockUserRepository()
+	repo.users["u1"] = &user.User{ID: "u1", Email: "person@example.com", Username: "old"}
+	svc := user.NewAdminService(repo)
+	profile, err := svc.UpdateProfile("u1", user.UpdateProfileRequest{Email: "person@example.com", Username: "new"})
+	if err != nil || profile.Username != "new" || profile.Email != "person@example.com" {
+		t.Fatalf("profile=%#v, error=%v", profile, err)
 	}
 }

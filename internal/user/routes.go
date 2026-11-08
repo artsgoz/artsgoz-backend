@@ -45,8 +45,3 @@ func RegisterAdminRoutes(router *gin.RouterGroup, adminHandler *AdminHandler, re
 	router.PUT("/me/password", requireAuth, adminHandler.ChangePassword)
 	router.POST("/me/avatar", requireAuth, adminHandler.UploadAvatar)
 }
-
-func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
-	users := router.Group("/users")
-	users.POST("/register", handler.Register)
-}

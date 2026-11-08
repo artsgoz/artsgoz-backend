@@ -10,7 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"path/filepath"
+
 	"github.com/artsgoz/artsgoz-backend/internal/activity"
+	"github.com/artsgoz/artsgoz-backend/internal/auth"
 	"github.com/artsgoz/artsgoz-backend/internal/comment"
 	"github.com/artsgoz/artsgoz-backend/internal/dashboard"
 	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
@@ -31,6 +34,11 @@ func run() error {
 	defer stop()
 
 	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	firebaseClient, err := auth.InitFirebase(cfg.FirebaseCredentials, cfg.FirebaseProjectID)
 	if err != nil {
 		return err
 	}
@@ -63,6 +71,10 @@ func run() error {
 	}
 
 	engine := server.New(cfg.GinMode)
+	if err := os.MkdirAll(filepath.Join(cfg.UploadDir, "avatars"), 0755); err != nil {
+		return err
+	}
+	engine.Static("/uploads", cfg.UploadDir)
 
 	// API groups: register on both /api and /api/v1
 	api := engine.Group("/api")
@@ -70,10 +82,12 @@ func run() error {
 
 	// User module
 	userRepository := user.NewGormRepository(database.DB)
-	userService := user.NewService(userRepository)
-	userHandler := user.NewHandler(userService)
-	user.RegisterRoutes(api, userHandler)
-	user.RegisterRoutes(apiV1, userHandler)
+
+	authService := auth.NewService(userRepository, firebaseClient)
+	auth.Register(api, authService)
+	auth.Register(apiV1, authService)
+	user.Register(api, database.DB, auth.Middleware(authService))
+	user.Register(apiV1, database.DB, auth.Middleware(authService))
 
 	// Activity module
 	activityRepository := activity.NewGormRepository(database.DB)
@@ -105,14 +119,14 @@ func run() error {
 	// [GET] /api/v1/admin/dashboard/top-categories
 	// [GET] /api/v1/admin/dashboard/recent-activities
 	adminV1 := apiV1.Group("/admin",
-		server.AuthRequired(),
+		server.AuthRequired(auth.Middleware(authService)),
 		server.RequireRoles(server.RoleEditor, server.RoleSuperAdmin),
 	)
 	dashboard.RegisterAdminRoutes(adminV1, dashboardHandler)
 
 	// Also register on /api/admin for consistency
 	adminAPI := api.Group("/admin",
-		server.AuthRequired(),
+		server.AuthRequired(auth.Middleware(authService)),
 		server.RequireRoles(server.RoleEditor, server.RoleSuperAdmin),
 	)
 	dashboard.RegisterAdminRoutes(adminAPI, dashboardHandler)

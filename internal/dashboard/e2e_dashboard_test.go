@@ -222,7 +222,7 @@ func (m *mockDashboardRepo) GetMonthlyTrafficByYear(_ context.Context, year int)
 	return items, nil
 }
 
-// setupE2ETestEngine sets up Gin engine with real auth middleware and dashboard routes.
+// setupE2ETestEngine uses fixed test identities to exercise dashboard authorization.
 func setupE2ETestEngine(repo *mockDashboardRepo, actSvc *activity.Service) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -234,7 +234,20 @@ func setupE2ETestEngine(repo *mockDashboardRepo, actSvc *activity.Service) *gin.
 	RegisterRoutes(apiV1, h)
 
 	adminV1 := apiV1.Group("/admin",
-		server.AuthRequired(),
+		server.AuthRequired(func(c *gin.Context) {
+			switch c.GetHeader("Authorization") {
+			case "Bearer mock.jwt.admin":
+				c.Set("user_id", "admin")
+				c.Set("user_role", "editor")
+			case "Bearer mock.jwt.member":
+				c.Set("user_id", "member")
+				c.Set("user_role", "member")
+			default:
+				c.AbortWithStatus(http.StatusUnauthorized)
+				return
+			}
+			c.Next()
+		}),
 		server.RequireRoles(server.RoleEditor, server.RoleSuperAdmin),
 	)
 	RegisterAdminRoutes(adminV1, h)

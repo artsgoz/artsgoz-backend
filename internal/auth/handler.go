@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -13,99 +14,6 @@ type Handler struct {
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
-}
-
-func (h *Handler) Register(c *gin.Context) {
-	var request RegisterRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "BAD_REQUEST", "message": "invalid request body: " + err.Error()},
-			"message": "invalid request body: " + err.Error(),
-		})
-		return
-	}
-
-	user, token, err := h.service.Register(c.Request.Context(), request)
-	if err != nil {
-		if err.Error() == "username is already taken" || err.Error() == "email is already registered" {
-			c.JSON(http.StatusConflict, gin.H{
-				"success": false,
-				"error":   gin.H{"code": "CONFLICT", "message": err.Error()},
-				"message": err.Error(),
-			})
-			return
-		}
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "BAD_REQUEST", "message": err.Error()},
-			"message": err.Error(),
-		})
-		return
-	}
-
-	userData := gin.H{
-		"id":         user.ID,
-		"username":   user.Username,
-		"email":      user.Email,
-		"role":       user.Role,
-		"avatar_url": user.AvatarURL,
-		"created_at": user.CreatedAt,
-		"updated_at": user.UpdatedAt,
-	}
-
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"message": "registration successful",
-		"token":   token,
-		"user":    userData,
-		"data": gin.H{
-			"token": token,
-			"user":  userData,
-		},
-	})
-}
-
-func (h *Handler) Login(c *gin.Context) {
-	var request LoginRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "BAD_REQUEST", "message": "invalid request body: " + err.Error()},
-			"message": "invalid request body: " + err.Error(),
-		})
-		return
-	}
-
-	response, err := h.service.Login(c.Request.Context(), request)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "UNAUTHORIZED", "message": err.Error()},
-			"message": err.Error(),
-		})
-		return
-	}
-
-	userData := gin.H{
-		"id":         response.User.ID,
-		"username":   response.User.Username,
-		"email":      response.User.Email,
-		"role":       response.User.Role,
-		"avatar_url": response.User.AvatarURL,
-		"created_at": response.User.CreatedAt,
-		"updated_at": response.User.UpdatedAt,
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"token":   response.Token,
-		"user":    userData,
-		"data": gin.H{
-			"token": response.Token,
-			"user":  userData,
-		},
-	})
 }
 
 func (h *Handler) FirebaseLogin(c *gin.Context) {
@@ -121,11 +29,7 @@ func (h *Handler) FirebaseLogin(c *gin.Context) {
 
 	response, err := h.service.FirebaseLogin(c.Request.Context(), request)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "UNAUTHORIZED", "message": err.Error()},
-			"message": err.Error(),
-		})
+		writeAuthError(c, err)
 		return
 	}
 
@@ -196,6 +100,10 @@ func (h *Handler) Me(c *gin.Context) {
 }
 
 func (h *Handler) Logout(c *gin.Context) {
+	if err := h.service.Logout(c.Request.Context(), c.GetString("firebase_uid")); err != nil {
+		internalError(c, "failed to sign out Firebase sessions", err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "logout successful",
@@ -217,4 +125,20 @@ func internalError(c *gin.Context, msg string, err error) {
 		"error":   gin.H{"code": "INTERNAL_SERVER_ERROR", "message": msg},
 		"message": msg,
 	})
+}
+
+func writeAuthError(c *gin.Context, err error) {
+	status, code := http.StatusUnauthorized, "UNAUTHORIZED"
+	switch {
+	case errors.Is(err, ErrFirebaseUnavailable):
+		status, code = http.StatusServiceUnavailable, "AUTH_UNAVAILABLE"
+	case errors.Is(err, ErrAccountConflict):
+		status, code = http.StatusConflict, "ACCOUNT_CONFLICT"
+	case errors.Is(err, ErrInvalidUsername):
+		status, code = http.StatusBadRequest, "BAD_REQUEST"
+	case !errors.Is(err, ErrInvalidToken):
+		internalError(c, "authentication failed", err)
+		return
+	}
+	c.JSON(status, gin.H{"success": false, "error": gin.H{"code": code, "message": err.Error()}, "message": err.Error()})
 }

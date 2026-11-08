@@ -22,7 +22,7 @@ type realFirebaseClient struct {
 }
 
 func (c *realFirebaseClient) VerifyIDToken(ctx context.Context, idToken string) (*firebaseauth.Token, error) {
-	return c.client.VerifyIDToken(ctx, idToken)
+	return c.client.VerifyIDTokenAndCheckRevoked(ctx, idToken)
 }
 
 func (c *realFirebaseClient) RevokeRefreshTokens(ctx context.Context, uid string) error {
@@ -31,13 +31,18 @@ func (c *realFirebaseClient) RevokeRefreshTokens(ctx context.Context, uid string
 
 // InitFirebase initializes the Firebase Admin SDK app and Auth client.
 // If the credentials file does not exist, it falls back to Application Default Credentials
-// or returns nil so the server can run without failing in local development.
+// and returns an error when Firebase cannot be initialized.
 func InitFirebase(credentialsPath string, projectID string) (FirebaseClient, error) {
 	ctx := context.Background()
 
+	if projectID == "" {
+		return nil, fmt.Errorf("FIREBASE_PROJECT_ID is required")
+	}
 	var opts []option.ClientOption
 
-	if credentialsPath != "" {
+	if raw := os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON"); raw != "" {
+		opts = append(opts, option.WithCredentialsJSON([]byte(raw)))
+	} else if credentialsPath != "" {
 		if _, err := os.Stat(credentialsPath); err == nil {
 			opts = append(opts, option.WithCredentialsFile(credentialsPath))
 			log.Printf("[Firebase] Using credentials file from: %s", credentialsPath)

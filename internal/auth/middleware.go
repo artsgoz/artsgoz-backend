@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Middleware verifies JWT or Firebase tokens before allowing access to authenticated routes.
+// Middleware verifies Firebase ID tokens and loads authorization roles from PostgreSQL.
 func Middleware(service *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
@@ -19,7 +19,8 @@ func Middleware(service *Service) gin.HandlerFunc {
 			})
 			return
 		}
-		if !strings.HasPrefix(header, "Bearer ") {
+		parts := strings.Fields(header)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"error":   gin.H{"code": "UNAUTHORIZED", "message": "invalid authorization format"},
@@ -28,36 +29,22 @@ func Middleware(service *Service) gin.HandlerFunc {
 			return
 		}
 
-		tokenString := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+		tokenString := parts[1]
 
-		// 1. Try local JWT token first
-		claims, err := service.ValidateToken(tokenString)
-		if err == nil {
-			c.Set("user_id", claims.UserID)
-			c.Set("uid", claims.UserID) // compatibility
-			c.Set("username", claims.Username)
-			c.Set("role", claims.Role)
+		profile, err := service.VerifyAndGetUserFromFirebase(c.Request.Context(), tokenString)
+		if err == nil && profile != nil {
+			c.Set("user_id", profile.ID)
+			c.Set("uid", profile.ID)
+			c.Set("firebase_uid", profile.FirebaseUID)
+			c.Set("username", profile.Username)
+			c.Set("role", profile.Role)
+			c.Set("user_role", profile.Role)
 			c.Next()
 			return
 		}
 
-		// 2. If local JWT validation fails and Firebase is configured, try Firebase ID token
-		if service.HasFirebase() {
-			profile, err := service.VerifyAndGetUserFromFirebase(c.Request.Context(), tokenString)
-			if err == nil && profile != nil {
-				c.Set("user_id", profile.ID)
-				c.Set("uid", profile.ID)
-				c.Set("username", profile.Username)
-				c.Set("role", profile.Role)
-				c.Next()
-				return
-			}
-		}
+		writeAuthError(c, err)
+		c.Abort()
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "UNAUTHORIZED", "message": "invalid or expired token"},
-			"message": "invalid or expired token",
-		})
 	}
 }

@@ -30,14 +30,6 @@ func DatabaseURL() string {
 	return u.String()
 }
 
-func JWTSecret() string {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return "artsgoz-default-secret-key-change-in-production"
-	}
-	return secret
-}
-
 func FirebaseCredentialsPath() string {
 	path := os.Getenv("FIREBASE_CREDENTIALS")
 	if path == "" {
@@ -47,5 +39,6 @@ func FirebaseCredentialsPath() string {
 }
 
 func FirebaseProjectID() string {
-	return os.Getenv("FIREBASE_PROJECT_ID")
+	if project := os.Getenv("FIREBASE_PROJECT_ID"); project != "" { return project }
+    return os.Getenv("GCP_PROJECT_ID")
 }

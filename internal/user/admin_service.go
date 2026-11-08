@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/mail"
 	"strings"
-
-	"golang.org/x/crypto/bcrypt"
 )
+
+var ErrFirebaseCredentialsManaged = errors.New("manage email and password through Firebase Authentication")
 
 type AdminService interface {
 	GetAllUsers() ([]*User, error)
@@ -69,37 +69,19 @@ func (u *adminService) UpdateProfile(id string, req UpdateProfileRequest) (*User
 		if _, err := mail.ParseAddress(req.Email); err != nil {
 			return nil, errors.New("invalid email format")
 		}
+		profile, err := u.GetProfile(id)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.EqualFold(req.Email, profile.Email) {
+			return nil, ErrFirebaseCredentialsManaged
+		}
+		// Existing forms may include the unchanged email with a profile update.
+		req.Email = ""
 	}
 	return u.userRepo.UpdateProfile(id, req.Username, req.Email, req.AvatarURL)
 }
 
 func (u *adminService) ChangePassword(id string, req ChangePasswordRequest) error {
-	if id == "" {
-		return errors.New("user ID is required")
-	}
-	if req.CurrentPassword == "" {
-		return errors.New("current password is required")
-	}
-	if len(req.NewPassword) < 6 {
-		return errors.New("new password must be at least 6 characters")
-	}
-
-	user, err := u.userRepo.FindByID(context.Background(), id)
-	if err != nil {
-		return err
-	}
-	if user == nil {
-		return errors.New("user not found")
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
-		return errors.New("incorrect current password")
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return errors.New("failed to encrypt password")
-	}
-
-	return u.userRepo.UpdatePassword(id, string(hashedPassword))
+	return ErrFirebaseCredentialsManaged
 }

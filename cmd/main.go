@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
@@ -22,6 +21,12 @@ func main() {
 	// 1. Load local configuration (if present)
 	if err := config.Load(); err != nil {
 		log.Printf("Warning: failed to load local configuration: %v. Will rely on environment variables.", err)
+	}
+
+	// Firebase is required for email/password and Google sign-in.
+	firebaseClient, err := auth.InitFirebase(config.FirebaseCredentialsPath(), config.FirebaseProjectID())
+	if err != nil {
+		log.Fatalf("Failed to initialize Firebase authentication: %v", err)
 	}
 
 	// 2. Connect to PostgreSQL
@@ -78,21 +83,13 @@ func main() {
 	api := app.Group("/api")
 	apiV1 := app.Group("/api/v1")
 	userRepo := user.NewUserRepository(db)
-	jwtManager := auth.NewJWTManager(config.JWTSecret(), 24*time.Hour)
 
-	// Initialize Firebase Auth Client (if credentials present)
-	firebaseClient, err := auth.InitFirebase(config.FirebaseCredentialsPath(), config.FirebaseProjectID())
-	if err != nil {
-		log.Printf("[Firebase] Notice: Firebase Auth not initialized: %v (running with JWT only)", err)
-	}
+	authService := auth.NewService(userRepo, firebaseClient)
 
-	authService := auth.NewService(userRepo, jwtManager, firebaseClient)
-
+	auth.Register(api, authService)
+	user.Register(api, db, auth.Middleware(authService))
 	auth.Register(apiV1, authService)
 	user.Register(apiV1, db, auth.Middleware(authService))
-	userHandler := user.NewHandler(user.NewService(userRepo))
-	user.RegisterRoutes(api, userHandler)
-	user.RegisterRoutes(apiV1, userHandler)
 
 	articleHandler := article.NewHandler(article.NewService(article.NewGormRepository(db)))
 	article.RegisterRoutes(api, articleHandler)

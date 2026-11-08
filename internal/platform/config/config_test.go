@@ -31,3 +31,31 @@ func TestValidateGinMode(t *testing.T) {
 		t.Fatal("validateGinMode() error = nil, want an error")
 	}
 }
+
+func TestFirebaseConfiguration(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "test")
+	t.Setenv("DB_NAME", "test")
+	t.Setenv("PORT", "3000")
+	t.Setenv("GIN_MODE", "test")
+	t.Setenv("FIREBASE_PROJECT_ID", "")
+	t.Setenv("GCP_PROJECT_ID", "fallback-project")
+	t.Setenv("FIREBASE_CREDENTIALS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.FirebaseProjectID != "fallback-project" || cfg.FirebaseCredentials != "firebase-service-account.json" {
+		t.Fatal("Firebase defaults were not loaded")
+	}
+	t.Setenv("FIREBASE_PROJECT_ID", "explicit-project")
+	t.Setenv("FIREBASE_CREDENTIALS", "/test/credentials.json")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.FirebaseProjectID != "explicit-project" || cfg.FirebaseCredentials != "/test/credentials.json" {
+		t.Fatal("explicit Firebase configuration was not loaded")
+	}
+}

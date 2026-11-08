@@ -188,29 +188,9 @@ func (h *AdminHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	var req ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "BAD_REQUEST", "message": "invalid request body: " + err.Error()},
-			"message": "invalid request body: " + err.Error(),
-		})
-		return
-	}
-
-	if err := h.adminService.ChangePassword(userID, req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "BAD_REQUEST", "message": err.Error()},
-			"message": err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "password updated successfully",
-	})
+	c.JSON(http.StatusGone, gin.H{"success": false, "error": gin.H{
+		"code": "FIREBASE_AUTH_REQUIRED", "message": ErrFirebaseCredentialsManaged.Error(),
+	}, "message": ErrFirebaseCredentialsManaged.Error()})
 }
 
 func (h *AdminHandler) UploadAvatar(c *gin.Context) {

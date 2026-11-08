@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	firebaseauth "firebase.google.com/go/v4/auth"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/artsgoz/artsgoz-backend/internal/auth"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
@@ -18,6 +16,9 @@ type mockUserRepository struct {
 	usersByUsername    map[string]*user.User
 	usersByEmail       map[string]*user.User
 	usersByFirebaseUID map[string]*user.User
+	linkErr            error
+	findErr            error
+	createHook         func(*user.User) error
 }
 
 func newMockUserRepository() *mockUserRepository {
@@ -34,18 +35,21 @@ func (m *mockUserRepository) FindByID(ctx context.Context, id string) (*user.Use
 }
 
 func (m *mockUserRepository) FindByUsername(ctx context.Context, username string) (*user.User, error) {
-	return m.usersByUsername[username], nil
+	return m.usersByUsername[username], m.findErr
 }
 
 func (m *mockUserRepository) FindByEmail(ctx context.Context, email string) (*user.User, error) {
-	return m.usersByEmail[email], nil
+	return m.usersByEmail[email], m.findErr
 }
 
 func (m *mockUserRepository) FindByFirebaseUID(ctx context.Context, uid string) (*user.User, error) {
-	return m.usersByFirebaseUID[uid], nil
+	return m.usersByFirebaseUID[uid], m.findErr
 }
 
 func (m *mockUserRepository) LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error {
+	if m.linkErr != nil {
+		return m.linkErr
+	}
 	if u, ok := m.usersByID[id]; ok {
 		u.FirebaseUID = firebaseUID
 		m.usersByFirebaseUID[firebaseUID] = u
@@ -54,6 +58,9 @@ func (m *mockUserRepository) LinkFirebaseUID(ctx context.Context, id string, fir
 }
 
 func (m *mockUserRepository) CreateUser(ctx context.Context, u *user.User) error {
+	if m.createHook != nil {
+		return m.createHook(u)
+	}
 	m.usersByID[u.ID] = u
 	m.usersByUsername[u.Username] = u
 	if u.Email != "" {
@@ -67,6 +74,8 @@ func (m *mockUserRepository) CreateUser(ctx context.Context, u *user.User) error
 
 type mockFirebaseClient struct {
 	verifyFunc func(ctx context.Context, idToken string) (*firebaseauth.Token, error)
+	revoked    string
+	revokeErr  error
 }
 
 func (m *mockFirebaseClient) VerifyIDToken(ctx context.Context, idToken string) (*firebaseauth.Token, error) {
@@ -77,156 +86,135 @@ func (m *mockFirebaseClient) VerifyIDToken(ctx context.Context, idToken string) 
 }
 
 func (m *mockFirebaseClient) RevokeRefreshTokens(ctx context.Context, uid string) error {
-	return nil
+	m.revoked = uid
+	return m.revokeErr
 }
 
-func TestAuthService_RegisterAndLogin(t *testing.T) {
+func firebaseToken(uid, email, provider string, verified bool) *firebaseauth.Token {
+	return &firebaseauth.Token{UID: uid, Firebase: firebaseauth.FirebaseInfo{SignInProvider: provider},
+		Claims: map[string]interface{}{"email": email, "email_verified": verified}}
+}
+
+func clientFor(token *firebaseauth.Token) *mockFirebaseClient {
+	return &mockFirebaseClient{verifyFunc: func(context.Context, string) (*firebaseauth.Token, error) { return token, nil }}
+}
+
+func TestFirebaseLoginBothProvidersShareProfile(t *testing.T) {
 	repo := newMockUserRepository()
-	jwtManager := auth.NewJWTManager("test-secret", 1*time.Hour)
-	svc := auth.NewService(repo, jwtManager)
-	ctx := context.Background()
-
-	// 1. Test Register
-	regReq := auth.RegisterRequest{
-		Username: "artsgoz_user",
-		Password: "securepassword123",
-		Email:    "test@example.com",
-	}
-
-	newUser, token, err := svc.Register(ctx, regReq)
+	fb := clientFor(firebaseToken("uid", "person@example.com", "password", false))
+	svc := auth.NewService(repo, fb)
+	first, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "password-token"})
 	if err != nil {
-		t.Fatalf("unexpected error during register: %v", err)
+		t.Fatal(err)
 	}
-	if newUser == nil || newUser.Username != "artsgoz_user" {
-		t.Errorf("expected user 'artsgoz_user', got %v", newUser)
+	if first.Token != "password-token" || first.User.PasswordHash != "" || first.User.Role != "member" {
+		t.Fatalf("response = %#v", first)
 	}
-	if token == "" {
-		t.Fatal("expected non-empty token")
-	}
-
-	// 2. Test Register Duplicate Username
-	_, _, err = svc.Register(ctx, regReq)
-	if err == nil {
-		t.Fatal("expected error for duplicate username, got nil")
-	}
-
-	// 3. Test Login Success
-	loginRes, err := svc.Login(ctx, auth.LoginRequest{
-		Username: "artsgoz_user",
-		Password: "securepassword123",
-	})
+	fb.verifyFunc = clientFor(firebaseToken("uid", "person@example.com", "google.com", true)).verifyFunc
+	second, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "google-token"})
 	if err != nil {
-		t.Fatalf("unexpected error during login: %v", err)
+		t.Fatal(err)
 	}
-	if loginRes.Token == "" {
-		t.Fatal("expected non-empty login token")
-	}
-	if loginRes.User.Username != "artsgoz_user" {
-		t.Errorf("expected user username 'artsgoz_user', got %s", loginRes.User.Username)
-	}
-
-	// 4. Test Login Wrong Password
-	_, err = svc.Login(ctx, auth.LoginRequest{
-		Username: "artsgoz_user",
-		Password: "wrongpassword",
-	})
-	if err == nil {
-		t.Fatal("expected error for wrong password, got nil")
-	}
-
-	// 5. Test Login Non-existent User
-	_, err = svc.Login(ctx, auth.LoginRequest{
-		Username: "unknown_user",
-		Password: "somepassword",
-	})
-	if err == nil {
-		t.Fatal("expected error for unknown user, got nil")
+	if second.User.ID != first.User.ID || len(repo.usersByID) != 1 || second.Token != "google-token" {
+		t.Fatalf("profile duplicated: %#v", second)
 	}
 }
 
-func TestAuthService_PasswordIsHashed(t *testing.T) {
-	repo := newMockUserRepository()
-	jwtManager := auth.NewJWTManager("test-secret", 1*time.Hour)
-	svc := auth.NewService(repo, jwtManager)
-	ctx := context.Background()
-
-	rawPassword := "mypassword123"
-	newUser, _, err := svc.Register(ctx, auth.RegisterRequest{
-		Username: "hashed_user",
-		Password: rawPassword,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if newUser.PasswordHash == rawPassword {
-		t.Fatal("password was stored in plain text, expected bcrypt hash")
-	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(newUser.PasswordHash), []byte(rawPassword))
-	if err != nil {
-		t.Fatalf("bcrypt compare failed: %v", err)
-	}
-}
-
-func TestAuthService_FirebaseLogin(t *testing.T) {
-	repo := newMockUserRepository()
-	jwtManager := auth.NewJWTManager("test-secret", 1*time.Hour)
-
-	mockFB := &mockFirebaseClient{
-		verifyFunc: func(ctx context.Context, idToken string) (*firebaseauth.Token, error) {
-			if idToken == "valid-token" {
-				return &firebaseauth.Token{
-					UID: "fb-uid-12345",
-					Claims: map[string]interface{}{
-						"email": "student@arts.chula.ac.th",
-					},
-				}, nil
+func TestFirebaseLoginLinksOnlyVerifiedUnlinkedEmail(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		verified    bool
+		existingUID string
+		wantError   bool
+	}{
+		{"verified legacy", true, "", false},
+		{"unverified legacy", false, "", true},
+		{"different Firebase identity", true, "other-uid", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newMockUserRepository()
+			legacy := &user.User{ID: "legacy-id", Email: "person@example.com", Username: "legacy", Role: "editor", FirebaseUID: tc.existingUID, PasswordHash: "old-hash"}
+			repo.CreateUser(context.Background(), legacy)
+			svc := auth.NewService(repo, clientFor(firebaseToken("new-uid", legacy.Email, "password", tc.verified)))
+			result, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"})
+			if tc.wantError {
+				if !errors.Is(err, auth.ErrAccountConflict) || legacy.FirebaseUID != tc.existingUID {
+					t.Fatalf("link error = %v, UID = %s", err, legacy.FirebaseUID)
+				}
+				return
 			}
-			return nil, errors.New("invalid firebase token")
-		},
+			if err != nil || result.User.ID != "legacy-id" || result.User.Role != "editor" || legacy.FirebaseUID != "new-uid" || legacy.PasswordHash != "old-hash" {
+				t.Fatalf("legacy link: result=%#v, err=%v", result, err)
+			}
+		})
 	}
+}
 
-	svc := auth.NewService(repo, jwtManager, mockFB)
-	ctx := context.Background()
+func TestFirebaseLoginRejectsInvalidTokens(t *testing.T) {
+	cases := []*firebaseauth.Token{nil, firebaseToken("", "person@example.com", "password", true), firebaseToken("uid", "person@example.com", "anonymous", true), firebaseToken("uid", "bad-email", "google.com", true)}
+	for _, token := range cases {
+		repo := newMockUserRepository()
+		svc := auth.NewService(repo, clientFor(token))
+		if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); !errors.Is(err, auth.ErrInvalidToken) {
+			t.Fatalf("error = %v", err)
+		}
+		if len(repo.usersByID) != 0 {
+			t.Fatal("created profile for invalid token")
+		}
+	}
+	svc := auth.NewService(newMockUserRepository(), &mockFirebaseClient{})
+	for _, raw := range []string{"", "expired", "revoked", "legacy-backend-jwt"} {
+		if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: raw}); !errors.Is(err, auth.ErrInvalidToken) {
+			t.Fatalf("token %q: %v", raw, err)
+		}
+	}
+	if _, err := auth.NewService(newMockUserRepository(), nil).FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); !errors.Is(err, auth.ErrFirebaseUnavailable) {
+		t.Fatalf("error = %v", err)
+	}
+}
 
-	// 1. First-time login: provisions new user
-	res, err := svc.FirebaseLogin(ctx, auth.FirebaseLoginRequest{
-		IDToken:  "valid-token",
-		Username: "chula_student",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestFirebaseLoginPropagatesRepositoryErrors(t *testing.T) {
+	repo := newMockUserRepository()
+	failure := errors.New("database unavailable")
+	svc := auth.NewService(repo, clientFor(firebaseToken("uid", "person@example.com", "google.com", true)))
+	repo.findErr = failure
+	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); !errors.Is(err, failure) {
+		t.Fatalf("lookup error = %v", err)
 	}
-	if res.User.FirebaseUID != "fb-uid-12345" {
-		t.Errorf("expected FirebaseUID 'fb-uid-12345', got %s", res.User.FirebaseUID)
+	repo.findErr = nil
+	legacy := &user.User{ID: "old", Email: "person@example.com"}
+	repo.CreateUser(context.Background(), legacy)
+	repo.linkErr = failure
+	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); !errors.Is(err, failure) || legacy.FirebaseUID != "" {
+		t.Fatalf("link error = %v", err)
 	}
-	if res.User.Email != "student@arts.chula.ac.th" {
-		t.Errorf("expected Email 'student@arts.chula.ac.th', got %s", res.User.Email)
-	}
-	if res.User.Username != "chula_student" {
-		t.Errorf("expected Username 'chula_student', got %s", res.User.Username)
-	}
-	if res.Token == "" {
-		t.Error("expected non-empty JWT token")
-	}
+}
 
-	// 2. Second-time login: retrieves same user
-	res2, err := svc.FirebaseLogin(ctx, auth.FirebaseLoginRequest{
-		IDToken: "valid-token",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestFirebaseLoginReusesConcurrentProfile(t *testing.T) {
+	repo := newMockUserRepository()
+	repo.createHook = func(profile *user.User) error {
+		profile.ID = "winner"
+		repo.usersByFirebaseUID[profile.FirebaseUID] = profile
+		return errors.New("unique constraint")
 	}
-	if res2.User.ID != res.User.ID {
-		t.Errorf("expected same user ID %s, got %s", res.User.ID, res2.User.ID)
+	svc := auth.NewService(repo, clientFor(firebaseToken("uid", "person@example.com", "password", false)))
+	result, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"})
+	if err != nil || result.User.ID != "winner" {
+		t.Fatalf("result=%#v, error=%v", result, err)
 	}
+}
 
-	// 3. Invalid token returns error
-	_, err = svc.FirebaseLogin(ctx, auth.FirebaseLoginRequest{
-		IDToken: "bad-token",
-	})
-	if err == nil {
-		t.Fatal("expected error for bad token, got nil")
+func TestFirebaseLoginHandlesShortUIDAndUsernameCollision(t *testing.T) {
+	repo := newMockUserRepository()
+	svc := auth.NewService(repo, clientFor(firebaseToken("x", "person@example.com", "password", true)))
+	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token", Username: "ab"}); !errors.Is(err, auth.ErrInvalidUsername) {
+		t.Fatalf("error=%v", err)
+	}
+	repo.usersByUsername["taken"] = &user.User{ID: "other"}
+	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token", Username: "taken"}); !errors.Is(err, auth.ErrAccountConflict) {
+		t.Fatalf("error=%v", err)
+	}
+	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); err != nil {
+		t.Fatal(err)
 	}
 }

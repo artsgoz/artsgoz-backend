@@ -31,13 +31,12 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 	return NewGormRepository(db)
 }
 
+var ErrEmailAlreadyExists = errors.New("email already registered")
+
+var ErrFirebaseUIDAlreadyLinked = errors.New("profile is already linked to another Firebase account")
+
 const uniqueViolation = "23505"
 
-type Repository interface {
-	CreateUser(context.Context, *User) error
-}
-
-var _ Repository = (*GormRepository)(nil)
 var _ UserRepository = (*GormRepository)(nil)
 
 func NewGormRepository(db *gorm.DB) *GormRepository {
@@ -93,11 +92,18 @@ func (r *GormRepository) FindByFirebaseUID(ctx context.Context, uid string) (*Us
 }
 
 func (r *GormRepository) LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error {
-	result := r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(map[string]any{
+	result := r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).
+		Where("firebase_uid IS NULL OR firebase_uid = '' OR firebase_uid = ?", firebaseUID).Updates(map[string]any{
 		"firebase_uid": firebaseUID,
 		"updated_at":   time.Now(),
 	})
-	return result.Error
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrFirebaseUIDAlreadyLinked
+	}
+	return nil
 }
 
 func (r *GormRepository) CreateUser(ctx context.Context, item *User) error {

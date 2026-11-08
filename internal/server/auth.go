@@ -21,44 +21,15 @@ const contextKeyRole = "user_role"
 // contextKeyUserID is the gin context key for the authenticated user's ID.
 const contextKeyUserID = "user_id"
 
-// AuthRequired is a middleware that validates Bearer Token authentication.
-// It extracts the token from the Authorization header and sets user context.
-// TODO: Integrate with a proper JWT library (e.g. golang-jwt/jwt/v5) for token
-// verification once the auth module is fully implemented.
-func AuthRequired() gin.HandlerFunc {
+// AuthRequired delegates authentication to the configured token verifier.
+// The verifier must load user_id and user_role from trusted profile data.
+func AuthRequired(verify gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{
-					"code":    "unauthorized",
-					"message": "authorization header is required",
-				},
-			})
+		if verify == nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "unauthorized", "message": "authentication is unavailable"}})
 			return
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{
-					"code":    "unauthorized",
-					"message": "invalid authorization header format, expected 'Bearer <token>'",
-				},
-			})
-			return
-		}
-
-		token := strings.TrimSpace(parts[1])
-
-		role := string(RoleEditor)
-		if r := c.GetHeader("X-User-Role"); r != "" {
-			role = strings.ToLower(strings.TrimSpace(r))
-		}
-		c.Set(contextKeyUserID, token)
-		c.Set(contextKeyRole, role)
-
-		c.Next()
+		verify(c)
 	}
 }
 
@@ -103,4 +74,3 @@ func joinRoles(roles []Role) string {
 	}
 	return strings.Join(s, ", ")
 }
-

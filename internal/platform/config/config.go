@@ -10,18 +10,20 @@ import (
 )
 
 type Config struct {
-	Port           string
-	GinMode        string
-	DBHost         string
-	DBPort         string
-	DBUser         string
-	DBPassword     string
-	DBName         string
-	DBSSLMode      string
-	StartupTimeout time.Duration
-	UploadDir      string
-	UploadBaseURL  string
-	StorageBucket  string
+	Port                string
+	GinMode             string
+	DBHost              string
+	DBPort              string
+	DBUser              string
+	DBPassword          string
+	DBName              string
+	DBSSLMode           string
+	StartupTimeout      time.Duration
+	UploadDir           string
+	UploadBaseURL       string
+	StorageBucket       string
+	FirebaseCredentials string
+	FirebaseProjectID   string
 }
 
 // Load reads an optional .env.local file and then resolves configuration from
@@ -34,18 +36,20 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Port:           envOrDefault("PORT", "3000"),
-		GinMode:        envOrDefault("GIN_MODE", "release"),
-		DBHost:         os.Getenv("DB_HOST"),
-		DBPort:         envOrDefault("DB_PORT", "5432"),
-		DBUser:         os.Getenv("DB_USER"),
-		DBPassword:     os.Getenv("DB_PASSWORD"),
-		DBName:         os.Getenv("DB_NAME"),
-		DBSSLMode:      envOrDefault("DB_SSL_MODE", "disable"),
-		StartupTimeout: 10 * time.Second,
-		UploadDir:      envOrDefault("UPLOAD_DIR", "./uploads"),
-		UploadBaseURL:  envOrDefault("UPLOAD_BASE_URL", "/uploads"),
-		StorageBucket:  os.Getenv("STORAGE_BUCKET"),
+		Port:                envOrDefault("PORT", "3000"),
+		GinMode:             envOrDefault("GIN_MODE", "release"),
+		DBHost:              os.Getenv("DB_HOST"),
+		DBPort:              envOrDefault("DB_PORT", "5432"),
+		DBUser:              os.Getenv("DB_USER"),
+		DBPassword:          os.Getenv("DB_PASSWORD"),
+		DBName:              os.Getenv("DB_NAME"),
+		DBSSLMode:           envOrDefault("DB_SSL_MODE", "disable"),
+		StartupTimeout:      10 * time.Second,
+		UploadDir:           envOrDefault("UPLOAD_DIR", "./uploads"),
+		UploadBaseURL:       envOrDefault("UPLOAD_BASE_URL", "/uploads"),
+		StorageBucket:       os.Getenv("STORAGE_BUCKET"),
+		FirebaseCredentials: envOrDefault("FIREBASE_CREDENTIALS", "firebase-service-account.json"),
+		FirebaseProjectID:   envOrDefault("FIREBASE_PROJECT_ID", os.Getenv("GCP_PROJECT_ID")),
 	}
 	if cfg.DBHost == "" || cfg.DBUser == "" || cfg.DBName == "" {
 		return Config{}, fmt.Errorf("config: DB_HOST, DB_USER, and DB_NAME are required")
