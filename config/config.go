@@ -12,7 +12,7 @@ import (
 
 func Load() error {
 	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("config: load env: %w", err)
+		return fmt.Errorf("config: cannot load .env; check file syntax and permissions")
 	}
 	return nil
 }
@@ -39,6 +39,8 @@ func FirebaseCredentialsPath() string {
 }
 
 func FirebaseProjectID() string {
-	if project := os.Getenv("FIREBASE_PROJECT_ID"); project != "" { return project }
-    return os.Getenv("GCP_PROJECT_ID")
+	if project := os.Getenv("FIREBASE_PROJECT_ID"); project != "" {
+		return project
+	}
+	return os.Getenv("GCP_PROJECT_ID")
 }

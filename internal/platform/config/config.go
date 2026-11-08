@@ -31,7 +31,7 @@ type Config struct {
 func Load() (Config, error) {
 	for _, filename := range []string{".env.local", ".env"} {
 		if err := godotenv.Load(filename); err != nil && !os.IsNotExist(err) {
-			return Config{}, fmt.Errorf("config: load %s: %w", filename, err)
+			return Config{}, fmt.Errorf("config: cannot load %s; check file syntax and permissions", filename)
 		}
 	}
 
