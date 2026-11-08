@@ -15,10 +15,10 @@ internal/
 ├── user/
 │   ├── model.go          GORM model and JSON representation
 │   ├── repository.go     repository interface and GORM implementation
-│   ├── service.go        application and business behavior
-│   ├── handler.go        Gin request/response translation
+│   ├── admin_service.go  profile business behavior
+│   ├── admin_handler.go  Gin request/response translation
 │   ├── routes.go         route registration
-│   └── service_test.go   service tests with repository stubs
+│   └── admin_service_test.go   service tests with repository stubs
 └── platform/
 	├── config/           environment and local dotenv loading
 	└── postgres/         GORM client and pool lifecycle
@@ -42,9 +42,11 @@ explicitly:
 
 ```go
 repository := user.NewGormRepository(database.DB)
-service := user.NewService(repository)
-handler := user.NewHandler(service)
-user.RegisterRoutes(api, handler)
+firebaseClient, err := auth.InitFirebase(cfg.FirebaseCredentials, cfg.FirebaseProjectID)
+if err != nil { return err }
+service := auth.NewService(repository, firebaseClient)
+auth.Register(api, service)
+user.Register(api, database.DB, auth.Middleware(service))
 ```
 
 Feature packages must not create database connections or read environment
@@ -52,18 +54,19 @@ variables. Those responsibilities stay in `internal/platform` and `cmd`.
 
 ## Request flow
 
-For user registration:
+For Firebase login:
 
-1. The handler binds the HTTP request.
-2. The service validates and normalizes input, hashes the password, and builds
-   the user model.
-3. The repository persists the model with GORM.
-4. PostgreSQL uniqueness errors become `ErrEmailAlreadyExists`.
-5. The handler maps expected errors to stable HTTP responses.
-6. Gin's default middleware logs requests and recovers from panics.
+1. The frontend signs in with Firebase Email/Password or Google.
+2. The handler binds the Firebase ID token and optional username.
+3. The service verifies the token, including revocation, through Firebase Admin.
+4. The service retrieves the profile by Firebase UID or safely links a legacy
+   profile using a verified email; first sign-in creates a member profile.
+5. PostgreSQL enforces identity uniqueness. Conditional updates prevent
+   overwriting a Firebase UID during concurrent linking.
+6. Protected routes verify Firebase tokens and load roles from PostgreSQL.
 
-The database unique constraint is authoritative; the service does not perform a
-race-prone check-before-insert query.
+See [Firebase authentication](firebase-auth.md) for the frontend contract and
+migration steps. Firebase owns credentials; PostgreSQL stores application profiles.
 
 ## Conventions
 
