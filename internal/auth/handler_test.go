@@ -45,6 +45,23 @@ func (m *fullMockRepo) FindByEmail(ctx context.Context, email string) (*user.Use
 	return nil, nil
 }
 
+func (m *fullMockRepo) FindByFirebaseUID(ctx context.Context, uid string) (*user.User, error) {
+	for _, u := range m.users {
+		if u.FirebaseUID == uid {
+			return u, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *fullMockRepo) LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error {
+	if u, ok := m.users[id]; ok {
+		u.FirebaseUID = firebaseUID
+		u.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
 func (m *fullMockRepo) CreateUser(ctx context.Context, u *user.User) error {
 	m.users[u.ID] = u
 	return nil

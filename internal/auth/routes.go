@@ -9,6 +9,8 @@ func Register(router *gin.RouterGroup, service *Service) {
 	routes := router.Group("/auth")
 	routes.POST("/register", handler.Register)
 	routes.POST("/login", handler.Login)
+	routes.POST("/firebase", handler.FirebaseLogin)
+	routes.POST("/firebase/login", handler.FirebaseLogin)
 	routes.GET("/me", requireAuth, handler.Me)
 	routes.POST("/logout", requireAuth, handler.Logout)
 

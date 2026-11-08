@@ -26,6 +26,7 @@ coverage.txt
 env.yaml
 .env.local
 
-# GCP credentials (never commit these)
+# GCP / Firebase credentials (never commit these)
 *-service-account*.json
+firebase-service-account*.json
 application_default_credentials.json

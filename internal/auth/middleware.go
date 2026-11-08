@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Middleware verifies JWT tokens before allowing access to authenticated routes.
+// Middleware verifies JWT or Firebase tokens before allowing access to authenticated routes.
 func Middleware(service *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
@@ -29,20 +29,35 @@ func Middleware(service *Service) gin.HandlerFunc {
 		}
 
 		tokenString := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+
+		// 1. Try local JWT token first
 		claims, err := service.ValidateToken(tokenString)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"error":   gin.H{"code": "UNAUTHORIZED", "message": "invalid or expired token"},
-				"message": "invalid or expired token",
-			})
+		if err == nil {
+			c.Set("user_id", claims.UserID)
+			c.Set("uid", claims.UserID) // compatibility
+			c.Set("username", claims.Username)
+			c.Set("role", claims.Role)
+			c.Next()
 			return
 		}
 
-		c.Set("user_id", claims.UserID)
-		c.Set("uid", claims.UserID) // compatibility
-		c.Set("username", claims.Username)
-		c.Set("role", claims.Role)
-		c.Next()
+		// 2. If local JWT validation fails and Firebase is configured, try Firebase ID token
+		if service.HasFirebase() {
+			profile, err := service.VerifyAndGetUserFromFirebase(c.Request.Context(), tokenString)
+			if err == nil && profile != nil {
+				c.Set("user_id", profile.ID)
+				c.Set("uid", profile.ID)
+				c.Set("username", profile.Username)
+				c.Set("role", profile.Role)
+				c.Next()
+				return
+			}
+		}
+
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "UNAUTHORIZED", "message": "invalid or expired token"},
+			"message": "invalid or expired token",
+		})
 	}
 }

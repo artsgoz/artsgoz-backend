@@ -89,6 +89,24 @@ func (m *mockUserRepository) UpdatePassword(id string, passwordHash string) erro
 	return nil
 }
 
+func (m *mockUserRepository) FindByFirebaseUID(ctx context.Context, firebaseUID string) (*user.User, error) {
+	for _, u := range m.users {
+		if u.FirebaseUID == firebaseUID {
+			return u, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockUserRepository) LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error {
+	if u, ok := m.users[id]; ok {
+		u.FirebaseUID = firebaseUID
+		u.UpdatedAt = time.Now()
+		return nil
+	}
+	return nil
+}
+
 func TestAdminService_UpdateUserRole(t *testing.T) {
 	repo := newMockUserRepository()
 	repo.users["u1"] = &user.User{

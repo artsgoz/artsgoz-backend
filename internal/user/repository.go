@@ -12,6 +12,8 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*User, error)
 	FindByUsername(ctx context.Context, username string) (*User, error)
 	FindByEmail(ctx context.Context, email string) (*User, error)
+	FindByFirebaseUID(ctx context.Context, uid string) (*User, error)
+	LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error
 	CreateUser(ctx context.Context, user *User) error
 	GetAllUsers() ([]*User, error)
 	UpdateRole(id string, role string) error
@@ -61,6 +63,26 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*User, 
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *userRepository) FindByFirebaseUID(ctx context.Context, uid string) (*User, error) {
+	var user User
+	err := r.db.WithContext(ctx).Where("firebase_uid = ?", uid).Take(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error {
+	result := r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(map[string]any{
+		"firebase_uid": firebaseUID,
+		"updated_at":   time.Now(),
+	})
+	return result.Error
 }
 
 func (r *userRepository) CreateUser(ctx context.Context, user *User) error {

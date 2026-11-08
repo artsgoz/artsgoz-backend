@@ -37,3 +37,15 @@ func JWTSecret() string {
 	}
 	return secret
 }
+
+func FirebaseCredentialsPath() string {
+	path := os.Getenv("FIREBASE_CREDENTIALS")
+	if path == "" {
+		return "firebase-service-account.json"
+	}
+	return path
+}
+
+func FirebaseProjectID() string {
+	return os.Getenv("FIREBASE_PROJECT_ID")
+}

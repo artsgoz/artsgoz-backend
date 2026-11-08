@@ -108,6 +108,50 @@ func (h *Handler) Login(c *gin.Context) {
 	})
 }
 
+func (h *Handler) FirebaseLogin(c *gin.Context) {
+	var request FirebaseLoginRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "BAD_REQUEST", "message": "invalid request body: " + err.Error()},
+			"message": "invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	response, err := h.service.FirebaseLogin(c.Request.Context(), request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "UNAUTHORIZED", "message": err.Error()},
+			"message": err.Error(),
+		})
+		return
+	}
+
+	userData := gin.H{
+		"id":           response.User.ID,
+		"firebase_uid": response.User.FirebaseUID,
+		"username":     response.User.Username,
+		"email":        response.User.Email,
+		"role":         response.User.Role,
+		"avatar_url":   response.User.AvatarURL,
+		"created_at":   response.User.CreatedAt,
+		"updated_at":   response.User.UpdatedAt,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "firebase login successful",
+		"token":   response.Token,
+		"user":    userData,
+		"data": gin.H{
+			"token": response.Token,
+			"user":  userData,
+		},
+	})
+}
+
 func (h *Handler) Me(c *gin.Context) {
 	userID := getUserID(c)
 	if userID == "" {
@@ -134,13 +178,14 @@ func (h *Handler) Me(c *gin.Context) {
 	}
 
 	userData := gin.H{
-		"id":         profile.ID,
-		"username":   profile.Username,
-		"email":      profile.Email,
-		"role":       profile.Role,
-		"avatar_url": profile.AvatarURL,
-		"created_at": profile.CreatedAt,
-		"updated_at": profile.UpdatedAt,
+		"id":           profile.ID,
+		"firebase_uid": profile.FirebaseUID,
+		"username":     profile.Username,
+		"email":        profile.Email,
+		"role":         profile.Role,
+		"avatar_url":   profile.AvatarURL,
+		"created_at":   profile.CreatedAt,
+		"updated_at":   profile.UpdatedAt,
 	}
 
 	c.JSON(http.StatusOK, gin.H{

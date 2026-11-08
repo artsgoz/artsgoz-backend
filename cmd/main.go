@@ -71,7 +71,14 @@ func main() {
 	api := app.Group("/api/v1")
 	userRepo := user.NewUserRepository(db)
 	jwtManager := auth.NewJWTManager(config.JWTSecret(), 24*time.Hour)
-	authService := auth.NewService(userRepo, jwtManager)
+
+	// Initialize Firebase Auth Client (if credentials present)
+	firebaseClient, err := auth.InitFirebase(config.FirebaseCredentialsPath(), config.FirebaseProjectID())
+	if err != nil {
+		log.Printf("[Firebase] Notice: Firebase Auth not initialized: %v (running with JWT only)", err)
+	}
+
+	authService := auth.NewService(userRepo, jwtManager, firebaseClient)
 
 	auth.Register(api, authService)
 	user.Register(api, db, auth.Middleware(authService))
