@@ -8,14 +8,14 @@
 //	go run ./cmd/migrate force <version>   # mark a version as applied (recovery only)
 //	go run ./cmd/migrate goto <version>    # migrate up or down to a specific version
 //
-// Database settings are read through the same configuration path as the API.
+// DATABASE_URL is read from the environment or .env.local.
+// Existing environment variables take precedence.
 package main
 
 import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"strconv"
 
@@ -23,8 +23,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
-	"github.com/artsgoz/artsgoz-backend/internal/platform/config"
-	platformpostgres "github.com/artsgoz/artsgoz-backend/internal/platform/postgres"
+	"github.com/artsgoz/artsgoz-backend/config"
 )
 
 func main() {
@@ -34,21 +33,16 @@ func main() {
 	}
 	cmd := os.Args[1]
 
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("load config: %v", err)
+	if err := config.Load(); err != nil {
+		log.Fatalf("load configuration: %v", err)
 	}
-	dsn, err := platformpostgres.ConnectionURL(platformpostgres.Config{
-		Host: cfg.DBHost, Port: cfg.DBPort, User: cfg.DBUser,
-		Password: cfg.DBPassword, Database: cfg.DBName, SSLMode: cfg.DBSSLMode,
-	})
-	if err != nil {
-		log.Fatal(err)
+
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL is not set")
 	}
-	driverDSN, err := migrationURL(dsn)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// golang-migrate's pgx driver expects a "pgx5://" scheme.
+	driverDSN := "pgx5" + dsn[len("postgres"):]
 
 	m, err := migrate.New("file://migrations", driverDSN)
 	if err != nil {
@@ -89,18 +83,6 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-}
-
-func migrationURL(dsn string) (string, error) {
-	parsed, err := url.Parse(dsn)
-	if err != nil {
-		return "", fmt.Errorf("parse database DSN: %w", err)
-	}
-	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
-		return "", fmt.Errorf("database DSN must use postgres or postgresql scheme")
-	}
-	parsed.Scheme = "pgx5"
-	return parsed.String(), nil
 }
 
 func runAndReport(action string, err error) {
