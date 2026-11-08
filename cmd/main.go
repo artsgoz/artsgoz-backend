@@ -32,7 +32,7 @@ func main() {
 
 	projectID := os.Getenv("GCP_PROJECT_ID")
 	if projectID == "" {
-		projectID = "account-test-c25f0"
+		projectID = "artsgoz-artsgoz-web-develop"
 	}
 
 	firebaseConfig := &firebase.Config{
