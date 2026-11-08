@@ -13,6 +13,13 @@ import (
 func setupE2ETestRouter() (*gin.Engine, *Service) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
+	// Test identities stand in for the production Firebase middleware.
+	engine.Use(func(c *gin.Context) {
+		c.Set("user_id", c.GetHeader("X-User-ID"))
+		c.Set("username", c.GetHeader("X-User-Name"))
+		c.Set("user_role", c.GetHeader("X-User-Role"))
+		c.Next()
+	})
 
 	repo := newArticleRepoStub()
 	svc := NewService(repo)
@@ -567,4 +574,3 @@ func TestE2E_TC_PUB_005_PublicFeedContainsOnlyPublishedArticles(t *testing.T) {
 		}
 	}
 }
-

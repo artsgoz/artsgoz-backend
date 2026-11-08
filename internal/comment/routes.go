@@ -10,10 +10,9 @@ func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
 		comments.DELETE("/:id", handler.Delete)
 	}
 
-	articles := router.Group("/articles/:article_id/comments")
+	articles := router.Group("/articles/:id/comments")
 	{
 		articles.GET("", handler.List)
 		articles.POST("", handler.Create)
 	}
 }
-

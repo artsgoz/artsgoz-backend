@@ -130,6 +130,8 @@ func internalError(c *gin.Context, msg string, err error) {
 func writeAuthError(c *gin.Context, err error) {
 	status, code := http.StatusUnauthorized, "UNAUTHORIZED"
 	switch {
+	case errors.Is(err, ErrGoogleEmailDomain):
+		status, code = http.StatusForbidden, "GOOGLE_EMAIL_DOMAIN"
 	case errors.Is(err, ErrFirebaseUnavailable):
 		status, code = http.StatusServiceUnavailable, "AUTH_UNAVAILABLE"
 	case errors.Is(err, ErrAccountConflict):

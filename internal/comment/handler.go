@@ -26,7 +26,7 @@ func (h *Handler) List(c *gin.Context) {
 	}
 	articleID := c.Query("article_id")
 	if articleID == "" {
-		articleID = c.Param("article_id")
+		articleID = c.Param("id")
 	}
 
 	result, err := h.service.List(c.Request.Context(), page, limit, search, articleID)
@@ -65,7 +65,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	articleID := req.ArticleID
 	if articleID == "" {
-		articleID = c.Param("article_id")
+		articleID = c.Param("id")
 	}
 
 	item, err := h.service.Create(c.Request.Context(), CreateCommentInput{
@@ -99,4 +99,3 @@ func (h *Handler) Delete(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "comment deleted successfully"})
 }
-

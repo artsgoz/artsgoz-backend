@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 )
 
@@ -57,5 +58,37 @@ func TestFirebaseConfiguration(t *testing.T) {
 	}
 	if cfg.FirebaseProjectID != "explicit-project" || cfg.FirebaseCredentials != "/test/credentials.json" {
 		t.Fatal("explicit Firebase configuration was not loaded")
+	}
+}
+
+func TestDotEnvFallbackAndPrecedence(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "test")
+	t.Setenv("DB_NAME", "test")
+	t.Setenv("GIN_MODE", "test")
+	t.Setenv("PORT", "")
+	if err := os.Unsetenv("PORT"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".env", []byte("PORT=4010\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil || cfg.Port != "4010" {
+		t.Fatalf(".env fallback: port=%s error=%v", cfg.Port, err)
+	}
+	if err := os.WriteFile(".env.local", []byte("PORT=4020\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv("PORT")
+	cfg, err = Load()
+	if err != nil || cfg.Port != "4020" {
+		t.Fatalf(".env.local precedence: port=%s error=%v", cfg.Port, err)
+	}
+	t.Setenv("PORT", "4030")
+	cfg, err = Load()
+	if err != nil || cfg.Port != "4030" {
+		t.Fatalf("process precedence: port=%s error=%v", cfg.Port, err)
 	}
 }

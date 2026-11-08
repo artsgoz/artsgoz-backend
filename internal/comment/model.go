@@ -8,6 +8,7 @@ import (
 
 // Comment represents a user comment on an article.
 type Comment struct {
+	Status       string         `gorm:"default:approved;index" json:"status"`
 	ID           string         `gorm:"type:uuid;primaryKey" json:"id"`
 	ArticleID    string         `gorm:"type:varchar(255);index;not null" json:"article_id"`
 	ArticleTitle string         `gorm:"type:varchar(500)" json:"article_title"`
@@ -35,4 +36,3 @@ type CommentItem struct {
 	TimeAgo      string    `json:"time_ago"`
 	CreatedAt    time.Time `json:"created_at"`
 }
-

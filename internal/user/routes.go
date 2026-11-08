@@ -3,6 +3,7 @@ package user
 import (
 	"net/http"
 
+	"github.com/artsgoz/artsgoz-backend/internal/server"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -23,8 +24,8 @@ func RegisterAdminRoutes(router *gin.RouterGroup, adminHandler *AdminHandler, re
 			"role":    role,
 		})
 	})
-	adminGroup.GET("/users", adminHandler.GetAllUsers)
-	adminGroup.PUT("/users/:id/role", adminHandler.UpdateUserRole)
+	adminGroup.GET("/users", server.RequireRoles(server.RoleEditor, server.RoleSuperAdmin, server.Role("admin")), adminHandler.GetAllUsers)
+	adminGroup.PUT("/users/:id/role", server.RequireRoles(server.RoleSuperAdmin, server.Role("admin")), adminHandler.UpdateUserRole)
 	adminGroup.GET("/me", adminHandler.GetProfile)
 	adminGroup.PUT("/me", adminHandler.UpdateProfile)
 	adminGroup.PUT("/me/password", adminHandler.ChangePassword)

@@ -17,6 +17,7 @@ var (
 	ErrInvalidToken        = errors.New("invalid or expired Firebase token")
 	ErrFirebaseUnavailable = errors.New("Firebase authentication is not configured")
 	ErrAccountConflict     = errors.New("account cannot be linked; verify your email and use the Firebase account already linked to this profile")
+	ErrGoogleEmailDomain   = errors.New("Google sign-in requires a verified @student.chula.ac.th email")
 	ErrInvalidUsername     = errors.New("username must contain between 3 and 50 characters")
 )
 
@@ -50,7 +51,14 @@ func (s *Service) verify(ctx context.Context, idToken string) (*firebaseauth.Tok
 		return nil, ErrInvalidToken
 	}
 	switch token.Firebase.SignInProvider {
-	case "password", "google.com":
+	case "password":
+	case "google.com":
+		email, _ := token.Claims["email"].(string)
+		verified, _ := token.Claims["email_verified"].(bool)
+		address, parseErr := mail.ParseAddress(email)
+		if !verified || parseErr != nil || address.Address != email || !strings.HasSuffix(strings.ToLower(email), "@student.chula.ac.th") {
+			return nil, ErrGoogleEmailDomain
+		}
 	default:
 		return nil, ErrInvalidToken
 	}

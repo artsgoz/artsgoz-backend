@@ -2,7 +2,7 @@ package dashboard
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
+func RegisterRoutes(router *gin.RouterGroup, handler *Handler, includeArticleViews ...bool) {
 	dash := router.Group("/dashboard")
 	{
 		dash.GET("/overview", handler.GetOverview)
@@ -12,10 +12,10 @@ func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
 		dash.POST("/traffic/record", handler.RecordTraffic)
 	}
 
-	articles := router.Group("/articles")
-	{
-		articles.POST("/:id/views", handler.RecordArticleView)
+	if len(includeArticleViews) == 0 || includeArticleViews[0] {
+		router.POST("/articles/:id/views", handler.RecordArticleView)
 	}
+
 }
 
 // RegisterAdminRoutes registers the spec-compliant admin dashboard analytics endpoints.

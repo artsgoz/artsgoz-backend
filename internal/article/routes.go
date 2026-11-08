@@ -2,16 +2,16 @@ package article
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
+func RegisterRoutes(router *gin.RouterGroup, handler *Handler, middleware ...gin.HandlerFunc) {
 	// Standard / legacy articles
 	articles := router.Group("/articles")
 	{
-		articles.POST("", handler.Create)
+		articles.POST("", append(middleware, handler.Create)...)
 		articles.GET("", handler.List)
 		articles.GET("/:id", handler.Get)
-		articles.PUT("/:id", handler.Update)
-		articles.DELETE("/:id", handler.Delete)
-		articles.PATCH("/:id/status", handler.UpdateStatus)
+		articles.PUT("/:id", append(middleware, handler.Update)...)
+		articles.DELETE("/:id", append(middleware, handler.Delete)...)
+		articles.PATCH("/:id/status", append(middleware, handler.UpdateStatus)...)
 		articles.POST("/:id/views", handler.IncrementViews)
 		articles.GET("/:id/logs", handler.ListActivityLogs)
 	}
@@ -24,7 +24,7 @@ func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
 	}
 
 	// Admin Article & Category Management endpoints
-	admin := router.Group("/admin")
+	admin := router.Group("/admin", middleware...)
 	{
 		adminArticles := admin.Group("/articles")
 		{

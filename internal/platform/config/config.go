@@ -29,9 +29,9 @@ type Config struct {
 // Load reads an optional .env.local file and then resolves configuration from
 // the process environment. Existing environment variables take precedence.
 func Load() (Config, error) {
-	if err := godotenv.Load(".env.local"); err != nil {
-		if !os.IsNotExist(err) {
-			return Config{}, fmt.Errorf("config: load .env.local: %w", err)
+	for _, filename := range []string{".env.local", ".env"} {
+		if err := godotenv.Load(filename); err != nil && !os.IsNotExist(err) {
+			return Config{}, fmt.Errorf("config: load %s: %w", filename, err)
 		}
 	}
 

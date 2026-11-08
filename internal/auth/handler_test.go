@@ -119,7 +119,7 @@ func setupFirebaseServer(provider string) (*gin.Engine, *mockFirebaseClient) {
 		if raw != "firebase-token" || fb.revoked != "" {
 			return nil, errors.New("invalid token")
 		}
-		return firebaseToken("firebase-uid", "person@example.com", provider, true), nil
+		return firebaseToken("firebase-uid", "person@student.chula.ac.th", provider, true), nil
 	}
 	svc := auth.NewService(repo, fb)
 	api := app.Group("/api/v1")
@@ -179,7 +179,7 @@ func TestFirebaseLoginAndProtectedRoutes(t *testing.T) {
 func TestLegacyPasswordRequestsRejected(t *testing.T) {
 	app, _ := setupFirebaseServer("password")
 	for _, path := range []string{"/auth/login", "/auth/register", "/users/register"} {
-		response := request(app, http.MethodPost, "/api/v1"+path, `{"email":"person@example.com","username":"person","password":"password123"}`, "")
+		response := request(app, http.MethodPost, "/api/v1"+path, `{"email":"person@student.chula.ac.th","username":"person","password":"password123"}`, "")
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("%s: status=%d", path, response.Code)
 		}

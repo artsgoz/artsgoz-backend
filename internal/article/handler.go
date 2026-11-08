@@ -21,28 +21,9 @@ func NewHandler(service *Service) *Handler {
 
 func getUserContext(c *gin.Context) UserContext {
 	id := c.GetString("user_id")
-	if id == "" {
-		id = c.GetHeader("X-User-ID")
-	}
 	role := c.GetString("user_role")
-	if role == "" {
-		role = c.GetHeader("X-User-Role")
-	}
-	// If bearer token or admin route is present without explicit role in dev mode, default to editor
-	if role == "" && (c.GetHeader("Authorization") != "" || strings.Contains(c.Request.URL.Path, "/admin")) {
-		role = "editor"
-	}
+	name := c.GetString("username")
 
-	name := c.GetString("user_name")
-	if name == "" {
-		name = c.GetHeader("X-User-Name")
-	}
-	if name == "" {
-		name = "ผู้ดูแลระบบ"
-	}
-	if id == "" {
-		id = "admin-user"
-	}
 	return UserContext{
 		ID:   strings.TrimSpace(id),
 		Name: strings.TrimSpace(name),

@@ -101,7 +101,7 @@ func clientFor(token *firebaseauth.Token) *mockFirebaseClient {
 
 func TestFirebaseLoginBothProvidersShareProfile(t *testing.T) {
 	repo := newMockUserRepository()
-	fb := clientFor(firebaseToken("uid", "person@example.com", "password", false))
+	fb := clientFor(firebaseToken("uid", "person@student.chula.ac.th", "password", false))
 	svc := auth.NewService(repo, fb)
 	first, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "password-token"})
 	if err != nil {
@@ -110,7 +110,7 @@ func TestFirebaseLoginBothProvidersShareProfile(t *testing.T) {
 	if first.Token != "password-token" || first.User.PasswordHash != "" || first.User.Role != "member" {
 		t.Fatalf("response = %#v", first)
 	}
-	fb.verifyFunc = clientFor(firebaseToken("uid", "person@example.com", "google.com", true)).verifyFunc
+	fb.verifyFunc = clientFor(firebaseToken("uid", "person@student.chula.ac.th", "google.com", true)).verifyFunc
 	second, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "google-token"})
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestFirebaseLoginLinksOnlyVerifiedUnlinkedEmail(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := newMockUserRepository()
-			legacy := &user.User{ID: "legacy-id", Email: "person@example.com", Username: "legacy", Role: "editor", FirebaseUID: tc.existingUID, PasswordHash: "old-hash"}
+			legacy := &user.User{ID: "legacy-id", Email: "person@student.chula.ac.th", Username: "legacy", Role: "editor", FirebaseUID: tc.existingUID, PasswordHash: "old-hash"}
 			repo.CreateUser(context.Background(), legacy)
 			svc := auth.NewService(repo, clientFor(firebaseToken("new-uid", legacy.Email, "password", tc.verified)))
 			result, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"})
@@ -151,7 +151,7 @@ func TestFirebaseLoginLinksOnlyVerifiedUnlinkedEmail(t *testing.T) {
 }
 
 func TestFirebaseLoginRejectsInvalidTokens(t *testing.T) {
-	cases := []*firebaseauth.Token{nil, firebaseToken("", "person@example.com", "password", true), firebaseToken("uid", "person@example.com", "anonymous", true), firebaseToken("uid", "bad-email", "google.com", true)}
+	cases := []*firebaseauth.Token{nil, firebaseToken("", "person@student.chula.ac.th", "password", true), firebaseToken("uid", "person@student.chula.ac.th", "anonymous", true), firebaseToken("uid", "bad-email", "password", true)}
 	for _, token := range cases {
 		repo := newMockUserRepository()
 		svc := auth.NewService(repo, clientFor(token))
@@ -176,13 +176,13 @@ func TestFirebaseLoginRejectsInvalidTokens(t *testing.T) {
 func TestFirebaseLoginPropagatesRepositoryErrors(t *testing.T) {
 	repo := newMockUserRepository()
 	failure := errors.New("database unavailable")
-	svc := auth.NewService(repo, clientFor(firebaseToken("uid", "person@example.com", "google.com", true)))
+	svc := auth.NewService(repo, clientFor(firebaseToken("uid", "person@student.chula.ac.th", "google.com", true)))
 	repo.findErr = failure
 	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); !errors.Is(err, failure) {
 		t.Fatalf("lookup error = %v", err)
 	}
 	repo.findErr = nil
-	legacy := &user.User{ID: "old", Email: "person@example.com"}
+	legacy := &user.User{ID: "old", Email: "person@student.chula.ac.th"}
 	repo.CreateUser(context.Background(), legacy)
 	repo.linkErr = failure
 	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); !errors.Is(err, failure) || legacy.FirebaseUID != "" {
@@ -197,7 +197,7 @@ func TestFirebaseLoginReusesConcurrentProfile(t *testing.T) {
 		repo.usersByFirebaseUID[profile.FirebaseUID] = profile
 		return errors.New("unique constraint")
 	}
-	svc := auth.NewService(repo, clientFor(firebaseToken("uid", "person@example.com", "password", false)))
+	svc := auth.NewService(repo, clientFor(firebaseToken("uid", "person@student.chula.ac.th", "password", false)))
 	result, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"})
 	if err != nil || result.User.ID != "winner" {
 		t.Fatalf("result=%#v, error=%v", result, err)
@@ -206,7 +206,7 @@ func TestFirebaseLoginReusesConcurrentProfile(t *testing.T) {
 
 func TestFirebaseLoginHandlesShortUIDAndUsernameCollision(t *testing.T) {
 	repo := newMockUserRepository()
-	svc := auth.NewService(repo, clientFor(firebaseToken("x", "person@example.com", "password", true)))
+	svc := auth.NewService(repo, clientFor(firebaseToken("x", "person@student.chula.ac.th", "password", true)))
 	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token", Username: "ab"}); !errors.Is(err, auth.ErrInvalidUsername) {
 		t.Fatalf("error=%v", err)
 	}
@@ -216,5 +216,48 @@ func TestFirebaseLoginHandlesShortUIDAndUsernameCollision(t *testing.T) {
 	}
 	if _, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGoogleStudentEmailPolicy(t *testing.T) {
+	cases := []struct {
+		name, email, provider string
+		verified, allowed     bool
+	}{
+		{"student Google", "student@student.chula.ac.th", "google.com", true, true},
+		{"case insensitive", "student@STUDENT.CHULA.AC.TH", "google.com", true, true},
+		{"other Google", "person@gmail.com", "google.com", true, false},
+		{"staff Google", "person@chula.ac.th", "google.com", true, false},
+		{"suffix spoof", "person@student.chula.ac.th.evil.test", "google.com", true, false},
+		{"unverified Google", "person@student.chula.ac.th", "google.com", false, false},
+		{"normal password", "person@gmail.com", "password", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newMockUserRepository()
+			svc := auth.NewService(repo, clientFor(firebaseToken("uid", tc.email, tc.provider, tc.verified)))
+			_, err := svc.FirebaseLogin(context.Background(), auth.FirebaseLoginRequest{IDToken: "token"})
+			if tc.allowed && err != nil {
+				t.Fatal(err)
+			}
+			if !tc.allowed && !errors.Is(err, auth.ErrGoogleEmailDomain) {
+				t.Fatalf("expected domain rejection, got %v", err)
+			}
+			if !tc.allowed && len(repo.usersByID) != 0 {
+				t.Fatal("rejected login created a profile")
+			}
+			if tc.allowed {
+				if _, err := svc.VerifyAndGetUserFromFirebase(context.Background(), "token"); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+	// Existing profiles cannot bypass the provider rule on protected requests.
+	repo := newMockUserRepository()
+	repo.CreateUser(context.Background(), &user.User{ID: "existing", FirebaseUID: "uid", Email: "person@gmail.com"})
+	svc := auth.NewService(repo, clientFor(firebaseToken("uid", "person@gmail.com", "google.com", true)))
+	if _, err := svc.VerifyAndGetUserFromFirebase(context.Background(), "token"); !errors.Is(err, auth.ErrGoogleEmailDomain) {
+		t.Fatalf("existing profile bypass: %v", err)
 	}
 }
