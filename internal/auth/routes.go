@@ -16,4 +16,5 @@ func Register(router *gin.RouterGroup, service *Service) {
 	router.POST("/login", handler.Login)
 	router.POST("/register", handler.Register)
 	router.GET("/me", requireAuth, handler.Me)
+	router.POST("/logout", requireAuth, handler.Logout)
 }

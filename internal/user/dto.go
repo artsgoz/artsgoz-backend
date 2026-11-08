@@ -6,11 +6,11 @@ type UpdateProfileRequest struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
+type UpdateRoleRequest struct {
+	Role string `json:"role" binding:"required"`
+}
+
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
 	NewPassword     string `json:"new_password" binding:"required,min=6"`
-}
-
-type UpdateRoleRequest struct {
-	Role string `json:"role" binding:"required"`
 }

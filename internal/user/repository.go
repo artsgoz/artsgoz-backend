@@ -15,7 +15,7 @@ type UserRepository interface {
 	CreateUser(ctx context.Context, user *User) error
 	GetAllUsers() ([]*User, error)
 	UpdateRole(id string, role string) error
-	UpdateProfile(id string, updates map[string]any) (*User, error)
+	UpdateProfile(id string, username string, email string, avatarURL string) (*User, error)
 	UpdatePassword(id string, passwordHash string) error
 }
 
@@ -88,11 +88,17 @@ func (r *userRepository) UpdateRole(id string, role string) error {
 	return nil
 }
 
-func (r *userRepository) UpdateProfile(id string, updates map[string]any) (*User, error) {
-	if len(updates) == 0 {
-		return r.FindByID(context.Background(), id)
+func (r *userRepository) UpdateProfile(id string, username string, email string, avatarURL string) (*User, error) {
+	updates := map[string]any{"updated_at": time.Now()}
+	if username != "" {
+		updates["username"] = username
 	}
-	updates["updated_at"] = time.Now()
+	if email != "" {
+		updates["email"] = email
+	}
+	if avatarURL != "" {
+		updates["avatar_url"] = avatarURL
+	}
 	result := r.db.Model(&User{}).Where("id = ?", id).Updates(updates)
 	if result.Error != nil {
 		return nil, result.Error

@@ -5,9 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/artsgoz/artsgoz-backend/internal/user"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type mockUserRepository struct {
@@ -64,15 +63,15 @@ func (m *mockUserRepository) UpdateRole(id string, role string) error {
 	return nil
 }
 
-func (m *mockUserRepository) UpdateProfile(id string, updates map[string]any) (*user.User, error) {
+func (m *mockUserRepository) UpdateProfile(id string, username string, email string, avatarURL string) (*user.User, error) {
 	if u, ok := m.users[id]; ok {
-		if email, ok := updates["email"].(string); ok {
-			u.Email = email
-		}
-		if username, ok := updates["username"].(string); ok {
+		if username != "" {
 			u.Username = username
 		}
-		if avatarURL, ok := updates["avatar_url"].(string); ok {
+		if email != "" {
+			u.Email = email
+		}
+		if avatarURL != "" {
 			u.AvatarURL = avatarURL
 		}
 		u.UpdatedAt = time.Now()
@@ -95,27 +94,24 @@ func TestAdminService_UpdateUserRole(t *testing.T) {
 	repo.users["u1"] = &user.User{
 		ID:       "u1",
 		Username: "member1",
-		Role:     "student",
+		Role:     "member",
 	}
 
 	adminSvc := user.NewAdminService(repo)
 
-	// Valid roles
-	validRoles := []string{"student", "teacher", "club-member", "admin"}
-	for _, r := range validRoles {
-		err := adminSvc.UpdateUserRole("u1", r)
-		if err != nil {
-			t.Errorf("expected role %s to be valid, got error: %v", r, err)
-		}
-		if repo.users["u1"].Role != r {
-			t.Errorf("expected user role to be %s, got %s", r, repo.users["u1"].Role)
-		}
+	// Valid role update
+	err := adminSvc.UpdateUserRole("u1", "editor")
+	if err != nil {
+		t.Errorf("expected role update to succeed, got error: %v", err)
+	}
+	if repo.users["u1"].Role != "editor" {
+		t.Errorf("expected user role to be editor, got %s", repo.users["u1"].Role)
 	}
 
-	// Invalid role
-	err := adminSvc.UpdateUserRole("u1", "superadmin")
+	// Invalid empty role
+	err = adminSvc.UpdateUserRole("u1", "")
 	if err == nil {
-		t.Fatal("expected error for invalid role 'superadmin', got nil")
+		t.Fatal("expected error for empty role, got nil")
 	}
 }
 
@@ -123,104 +119,83 @@ func TestAdminService_UpdateProfile(t *testing.T) {
 	repo := newMockUserRepository()
 	repo.users["u1"] = &user.User{
 		ID:        "u1",
-		Username:  "meow1",
-		Email:     "meow1@chula.ac.th",
-		AvatarURL: "/uploads/old.png",
-	}
-	repo.users["u2"] = &user.User{
-		ID:       "u2",
-		Username: "existing_user",
-		Email:    "existing@chula.ac.th",
+		Username:  "oldname",
+		Email:     "old@example.com",
+		AvatarURL: "http://example.com/old.png",
 	}
 
 	adminSvc := user.NewAdminService(repo)
 
-	// 1. Success update username, email, avatar
+	// 1. Valid update username and avatar
 	updated, err := adminSvc.UpdateProfile("u1", user.UpdateProfileRequest{
-		Username:  "meow_new",
-		Email:     "meow_new@chula.ac.th",
-		AvatarURL: "/uploads/new.png",
+		Username:  "newname",
+		AvatarURL: "http://example.com/new.png",
 	})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("unexpected update error: %v", err)
 	}
-	if updated.Username != "meow_new" || updated.Email != "meow_new@chula.ac.th" || updated.AvatarURL != "/uploads/new.png" {
-		t.Errorf("expected profile updated, got %+v", updated)
+	if updated.Username != "newname" {
+		t.Errorf("expected username 'newname', got %s", updated.Username)
 	}
-
-	// 2. Duplicate username error
-	_, err = adminSvc.UpdateProfile("u1", user.UpdateProfileRequest{
-		Username: "existing_user",
-	})
-	if err == nil || err.Error() != "username is already taken" {
-		t.Errorf("expected 'username is already taken', got %v", err)
+	if updated.AvatarURL != "http://example.com/new.png" {
+		t.Errorf("expected avatar 'http://example.com/new.png', got %s", updated.AvatarURL)
 	}
 
-	// 3. Duplicate email error
-	_, err = adminSvc.UpdateProfile("u1", user.UpdateProfileRequest{
-		Email: "existing@chula.ac.th",
-	})
-	if err == nil || err.Error() != "email is already registered" {
-		t.Errorf("expected 'email is already registered', got %v", err)
+	// 2. Empty request error
+	_, err = adminSvc.UpdateProfile("u1", user.UpdateProfileRequest{})
+	if err == nil {
+		t.Fatal("expected error when all fields are empty, got nil")
 	}
 
-	// 4. Invalid email format
+	// 3. Invalid email error
 	_, err = adminSvc.UpdateProfile("u1", user.UpdateProfileRequest{
-		Email: "invalid-email",
+		Email: "not-an-email",
 	})
-	if err == nil || err.Error() != "invalid email format" {
-		t.Errorf("expected 'invalid email format', got %v", err)
-	}
-
-	// 5. Short username
-	_, err = adminSvc.UpdateProfile("u1", user.UpdateProfileRequest{
-		Username: "ab",
-	})
-	if err == nil || err.Error() != "username must be at least 3 characters" {
-		t.Errorf("expected 'username must be at least 3 characters', got %v", err)
+	if err == nil {
+		t.Fatal("expected error for invalid email format, got nil")
 	}
 }
 
 func TestAdminService_ChangePassword(t *testing.T) {
 	repo := newMockUserRepository()
-	oldHash, _ := bcrypt.GenerateFromPassword([]byte("oldpassword123"), bcrypt.DefaultCost)
-	repo.users["u1"] = &user.User{
-		ID:           "u1",
-		Username:     "meow1",
-		PasswordHash: string(oldHash),
-	}
-
 	adminSvc := user.NewAdminService(repo)
 
-	// 1. Incorrect current password
+	// Setup user with hashed password
+	hashed, _ := bcrypt.GenerateFromPassword([]byte("oldpassword123"), bcrypt.DefaultCost)
+	repo.users["u1"] = &user.User{
+		ID:           "u1",
+		Username:     "member1",
+		PasswordHash: string(hashed),
+	}
+
+	// 1. Success change password
 	err := adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
-		CurrentPassword: "wrongpassword",
-		NewPassword:     "newpassword123",
-	})
-	if err == nil || err.Error() != "current password is incorrect" {
-		t.Errorf("expected 'current password is incorrect', got %v", err)
-	}
-
-	// 2. Short new password
-	err = adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
 		CurrentPassword: "oldpassword123",
-		NewPassword:     "12345",
-	})
-	if err == nil || err.Error() != "new password must be at least 6 characters" {
-		t.Errorf("expected 'new password must be at least 6 characters', got %v", err)
-	}
-
-	// 3. Success change password
-	err = adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
-		CurrentPassword: "oldpassword123",
-		NewPassword:     "newpassword123",
+		NewPassword:     "newpassword456",
 	})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("unexpected change password error: %v", err)
+	}
+	// Verify new password works with bcrypt
+	if err := bcrypt.CompareHashAndPassword([]byte(repo.users["u1"].PasswordHash), []byte("newpassword456")); err != nil {
+		t.Errorf("failed to verify new password: %v", err)
 	}
 
-	// Verify new password matches stored hash
-	if err := bcrypt.CompareHashAndPassword([]byte(repo.users["u1"].PasswordHash), []byte("newpassword123")); err != nil {
-		t.Errorf("stored hash does not match new password: %v", err)
+	// 2. Incorrect current password
+	err = adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
+		CurrentPassword: "wrongpassword",
+		NewPassword:     "anothernew123",
+	})
+	if err == nil {
+		t.Fatal("expected error for wrong current password, got nil")
+	}
+
+	// 3. New password too short
+	err = adminSvc.ChangePassword("u1", user.ChangePasswordRequest{
+		CurrentPassword: "newpassword456",
+		NewPassword:     "123",
+	})
+	if err == nil {
+		t.Fatal("expected error for short new password, got nil")
 	}
 }

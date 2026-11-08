@@ -65,8 +65,8 @@ func TestAuthService_RegisterAndLogin(t *testing.T) {
 	if newUser.Username != "artsgoz_user" {
 		t.Errorf("expected username 'artsgoz_user', got %s", newUser.Username)
 	}
-	if newUser.Role != "student" {
-		t.Errorf("expected default role 'student', got %s", newUser.Role)
+	if newUser.Role != "member" {
+		t.Errorf("expected default role 'member', got %s", newUser.Role)
 	}
 	if token == "" {
 		t.Fatal("expected non-empty token")
