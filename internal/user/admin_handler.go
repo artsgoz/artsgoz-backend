@@ -255,7 +255,11 @@ func (h *AdminHandler) UploadAvatar(c *gin.Context) {
 		return
 	}
 
-	uploadDir := "./uploads/avatars"
+	uploadRoot := os.Getenv("UPLOAD_DIR")
+	if uploadRoot == "" {
+		uploadRoot = "uploads"
+	}
+	uploadDir := filepath.Join(uploadRoot, "avatars")
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,

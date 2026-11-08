@@ -3,7 +3,7 @@ package user
 import "time"
 
 type User struct {
-	ID           string    `json:"id" gorm:"column:id;primaryKey"`
+	ID           string    `json:"id" gorm:"column:id;type:uuid;primaryKey"`
 	FirebaseUID  string    `json:"firebase_uid,omitempty" gorm:"column:firebase_uid;type:varchar(128);uniqueIndex"`
 	Username     string    `json:"username" gorm:"column:username;type:varchar(100);uniqueIndex;not null"`
 	Email        string    `json:"email" gorm:"column:email;type:varchar(255);uniqueIndex"`
@@ -13,3 +13,5 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at" gorm:"column:created_at"`
 	UpdatedAt    time.Time `json:"updated_at" gorm:"column:updated_at"`
 }
+
+func (User) TableName() string { return "users" }

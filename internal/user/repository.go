@@ -3,8 +3,10 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -21,15 +23,28 @@ type UserRepository interface {
 	UpdatePassword(id string, passwordHash string) error
 }
 
-type userRepository struct {
+type GormRepository struct {
 	db *gorm.DB
 }
 
 func NewUserRepository(db *gorm.DB) UserRepository {
-	return &userRepository{db: db}
+	return NewGormRepository(db)
 }
 
-func (r *userRepository) FindByID(ctx context.Context, id string) (*User, error) {
+const uniqueViolation = "23505"
+
+type Repository interface {
+	CreateUser(context.Context, *User) error
+}
+
+var _ Repository = (*GormRepository)(nil)
+var _ UserRepository = (*GormRepository)(nil)
+
+func NewGormRepository(db *gorm.DB) *GormRepository {
+	return &GormRepository{db: db}
+}
+
+func (r *GormRepository) FindByID(ctx context.Context, id string) (*User, error) {
 	var user User
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -41,7 +56,7 @@ func (r *userRepository) FindByID(ctx context.Context, id string) (*User, error)
 	return &user, nil
 }
 
-func (r *userRepository) FindByUsername(ctx context.Context, username string) (*User, error) {
+func (r *GormRepository) FindByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
 	err := r.db.WithContext(ctx).Where("username = ?", username).Take(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -53,7 +68,7 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 	return &user, nil
 }
 
-func (r *userRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
+func (r *GormRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
 	err := r.db.WithContext(ctx).Where("email = ?", email).Take(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -65,7 +80,7 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*User, 
 	return &user, nil
 }
 
-func (r *userRepository) FindByFirebaseUID(ctx context.Context, uid string) (*User, error) {
+func (r *GormRepository) FindByFirebaseUID(ctx context.Context, uid string) (*User, error) {
 	var user User
 	err := r.db.WithContext(ctx).Where("firebase_uid = ?", uid).Take(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -77,7 +92,7 @@ func (r *userRepository) FindByFirebaseUID(ctx context.Context, uid string) (*Us
 	return &user, nil
 }
 
-func (r *userRepository) LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error {
+func (r *GormRepository) LinkFirebaseUID(ctx context.Context, id string, firebaseUID string) error {
 	result := r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(map[string]any{
 		"firebase_uid": firebaseUID,
 		"updated_at":   time.Now(),
@@ -85,11 +100,36 @@ func (r *userRepository) LinkFirebaseUID(ctx context.Context, id string, firebas
 	return result.Error
 }
 
-func (r *userRepository) CreateUser(ctx context.Context, user *User) error {
-	return r.db.WithContext(ctx).Create(user).Error
+func (r *GormRepository) CreateUser(ctx context.Context, item *User) error {
+	if item == nil {
+		return fmt.Errorf("create user: user is nil")
+	}
+	// Email-only registration still needs a unique username for profile APIs.
+	if item.Username == "" {
+		item.Username = item.ID
+	}
+	query := r.db.WithContext(ctx)
+	// Unlinked accounts must store NULL rather than sharing an empty unique UID.
+	if item.FirebaseUID == "" {
+		query = query.Omit("FirebaseUID")
+	}
+	err := query.Create(item).Error
+	if err == nil {
+		return nil
+	}
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) && postgresError.Code == uniqueViolation {
+		if postgresError.ConstraintName == "idx_users_email" || postgresError.ConstraintName == "users_email_key" {
+			return ErrEmailAlreadyExists
+		}
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return ErrEmailAlreadyExists
+	}
+	return fmt.Errorf("create user: %w", err)
 }
 
-func (r *userRepository) GetAllUsers() ([]*User, error) {
+func (r *GormRepository) GetAllUsers() ([]*User, error) {
 	var users []*User
 	if err := r.db.Order("created_at DESC").Find(&users).Error; err != nil {
 		return nil, err
@@ -97,7 +137,7 @@ func (r *userRepository) GetAllUsers() ([]*User, error) {
 	return users, nil
 }
 
-func (r *userRepository) UpdateRole(id string, role string) error {
+func (r *GormRepository) UpdateRole(id string, role string) error {
 	result := r.db.Model(&User{}).Where("id = ?", id).Updates(map[string]any{
 		"role": role, "updated_at": time.Now(),
 	})
@@ -110,7 +150,7 @@ func (r *userRepository) UpdateRole(id string, role string) error {
 	return nil
 }
 
-func (r *userRepository) UpdateProfile(id string, username string, email string, avatarURL string) (*User, error) {
+func (r *GormRepository) UpdateProfile(id string, username string, email string, avatarURL string) (*User, error) {
 	updates := map[string]any{"updated_at": time.Now()}
 	if username != "" {
 		updates["username"] = username
@@ -131,7 +171,7 @@ func (r *userRepository) UpdateProfile(id string, username string, email string,
 	return r.FindByID(context.Background(), id)
 }
 
-func (r *userRepository) UpdatePassword(id string, passwordHash string) error {
+func (r *GormRepository) UpdatePassword(id string, passwordHash string) error {
 	result := r.db.Model(&User{}).Where("id = ?", id).Updates(map[string]any{
 		"password_hash": passwordHash,
 		"updated_at":    time.Now(),

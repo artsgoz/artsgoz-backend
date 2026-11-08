@@ -10,10 +10,10 @@ import (
 func Register(router *gin.RouterGroup, db *gorm.DB, requireAuth gin.HandlerFunc) {
 	repository := NewUserRepository(db)
 	handler := NewAdminHandler(NewAdminService(repository))
-	RegisterRoutes(router, handler, requireAuth, db)
+	RegisterAdminRoutes(router, handler, requireAuth, db)
 }
 
-func RegisterRoutes(router *gin.RouterGroup, adminHandler *AdminHandler, requireAuth gin.HandlerFunc, db *gorm.DB) {
+func RegisterAdminRoutes(router *gin.RouterGroup, adminHandler *AdminHandler, requireAuth gin.HandlerFunc, db *gorm.DB) {
 	// Admin backoffice group for club members (role restriction removed: backoffice is for all club members)
 	adminGroup := router.Group("/admin", requireAuth)
 	adminGroup.GET("/dashboard", func(c *gin.Context) {
@@ -44,4 +44,9 @@ func RegisterRoutes(router *gin.RouterGroup, adminHandler *AdminHandler, require
 	router.PUT("/me", requireAuth, adminHandler.UpdateProfile)
 	router.PUT("/me/password", requireAuth, adminHandler.ChangePassword)
 	router.POST("/me/avatar", requireAuth, adminHandler.UploadAvatar)
+}
+
+func RegisterRoutes(router *gin.RouterGroup, handler *Handler) {
+	users := router.Group("/users")
+	users.POST("/register", handler.Register)
 }

@@ -119,7 +119,8 @@ func setupTestServer() (*gin.Engine, *auth.Service, *user.AdminHandler) {
 
 	api := app.Group("/api/v1")
 	auth.Register(api, authSvc)
-	user.RegisterRoutes(api, adminHandler, auth.Middleware(authSvc), nil)
+	user.RegisterAdminRoutes(api, adminHandler, auth.Middleware(authSvc), nil)
+	user.RegisterRoutes(api, user.NewHandler(user.NewService(repo)))
 
 	return app, authSvc, adminHandler
 }
@@ -253,5 +254,42 @@ func TestE2E_AuthAndAdminFlow(t *testing.T) {
 	app.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 on logout, got %d", w.Code)
+	}
+}
+
+func TestE2EEmailRegistrationSupportsAuthAndProfile(t *testing.T) {
+	app, service, _ := setupTestServer()
+	for _, email := range []string{"first@example.com", "second@example.com"} {
+		body, _ := json.Marshal(map[string]string{"email": email, "password": "password123"})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/users/register", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		app.ServeHTTP(response, req)
+		if response.Code != http.StatusCreated {
+			t.Fatalf("register: status %d: %s", response.Code, response.Body.String())
+		}
+		var registered struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &registered); err != nil {
+			t.Fatal(err)
+		}
+		profile, err := service.GetProfile(context.Background(), registered.ID)
+		if err != nil || profile == nil || profile.Username == "" || profile.Role != "member" {
+			t.Fatalf("registered profile = %#v, error = %v", profile, err)
+		}
+		session, err := service.Login(context.Background(), auth.LoginRequest{
+			Username: profile.Username, Password: "password123",
+		})
+		if err != nil {
+			t.Fatalf("login registered user: %v", err)
+		}
+		req = httptest.NewRequest(http.MethodGet, "/api/v1/user/me", nil)
+		req.Header.Set("Authorization", "Bearer "+session.Token)
+		response = httptest.NewRecorder()
+		app.ServeHTTP(response, req)
+		if response.Code != http.StatusOK {
+			t.Fatalf("profile: status %d: %s", response.Code, response.Body.String())
+		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,7 +12,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/artsgoz/artsgoz-backend/config"
+	"github.com/artsgoz/artsgoz-backend/internal/article"
 	"github.com/artsgoz/artsgoz-backend/internal/auth"
+	"github.com/artsgoz/artsgoz-backend/internal/media"
 	"github.com/artsgoz/artsgoz-backend/internal/user"
 )
 
@@ -36,7 +39,7 @@ func main() {
 	log.Println("Connected to PostgreSQL successfully")
 
 	// 3. Auto Migrate Database Tables
-	if err := db.AutoMigrate(&user.User{}); err != nil {
+	if err := db.AutoMigrate(&user.User{}, &article.Article{}, &article.Category{}, &article.ActivityLog{}); err != nil {
 		log.Printf("Warning: AutoMigrate failed: %v", err)
 	} else {
 		log.Println("Database AutoMigrate executed successfully")
@@ -46,8 +49,12 @@ func main() {
 	app := gin.Default()
 
 	// Ensure uploads directory exists and mount static route
-	_ = os.MkdirAll("uploads/avatars", 0755)
-	app.Static("/uploads", "./uploads")
+	uploadDir := os.Getenv("UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = "uploads"
+	}
+	_ = os.MkdirAll(filepath.Join(uploadDir, "avatars"), 0755)
+	app.Static("/uploads", uploadDir)
 
 	// 4.1 Allow frontend access through CORS
 	app.Use(func(c *gin.Context) {
@@ -68,7 +75,8 @@ func main() {
 	})
 
 	// 5. Wire authentication and user modules under the API prefix
-	api := app.Group("/api/v1")
+	api := app.Group("/api")
+	apiV1 := app.Group("/api/v1")
 	userRepo := user.NewUserRepository(db)
 	jwtManager := auth.NewJWTManager(config.JWTSecret(), 24*time.Hour)
 
@@ -80,8 +88,27 @@ func main() {
 
 	authService := auth.NewService(userRepo, jwtManager, firebaseClient)
 
-	auth.Register(api, authService)
-	user.Register(api, db, auth.Middleware(authService))
+	auth.Register(apiV1, authService)
+	user.Register(apiV1, db, auth.Middleware(authService))
+	userHandler := user.NewHandler(user.NewService(userRepo))
+	user.RegisterRoutes(api, userHandler)
+	user.RegisterRoutes(apiV1, userHandler)
+
+	articleHandler := article.NewHandler(article.NewService(article.NewGormRepository(db)))
+	article.RegisterRoutes(api, articleHandler)
+	article.RegisterRoutes(apiV1, articleHandler)
+
+	uploadBaseURL := os.Getenv("UPLOAD_BASE_URL")
+	if uploadBaseURL == "" {
+		uploadBaseURL = "/uploads"
+	}
+	var storageProvider media.StorageProvider = media.NewLocalStorageProvider(uploadDir, uploadBaseURL)
+	if bucket := os.Getenv("STORAGE_BUCKET"); bucket != "" {
+		storageProvider = media.NewCloudStorageProvider(bucket, "", storageProvider)
+	}
+	mediaHandler := media.NewHandler(media.NewService(storageProvider))
+	media.RegisterRoutes(api, mediaHandler)
+	media.RegisterRoutes(apiV1, mediaHandler)
 
 	// 6. Start Server
 	port := os.Getenv("PORT")
