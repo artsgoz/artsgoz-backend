@@ -28,13 +28,21 @@ func main() {
 
 	// 2. Connect to Firebase (Auth only — user data is now stored in PostgreSQL)
 	var opt option.ClientOption
-	if _, err := os.Stat("firebase-service-account.json"); err == nil {
-		opt = option.WithCredentialsFile("firebase-service-account.json")
+	if raw := os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON"); raw != "" {
+		opt = option.WithAuthCredentialsJSON(
+			option.ServiceAccount,
+			[]byte(raw),
+		)
+	} else if _, err := os.Stat("firebase-service-account.json"); err == nil {
+		opt = option.WithAuthCredentialsFile(
+			option.ServiceAccount,
+			"firebase-service-account.json",
+		)
 	}
 
 	projectID := os.Getenv("GCP_PROJECT_ID")
 	if projectID == "" {
-		projectID = "account-test-c25f0"
+		projectID = "artsgoz-artsgoz-web-develop"
 	}
 
 	firebaseConfig := &firebase.Config{
